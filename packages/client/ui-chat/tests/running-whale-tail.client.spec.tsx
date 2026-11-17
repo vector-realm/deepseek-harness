@@ -3,12 +3,19 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { cleanup, render } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { RunningWhaleTail } from '../src/client/chat/RunningWhaleTail.tsx'
 
-afterEach(cleanup)
+afterEach(() => { cleanup(); vi.unstubAllEnvs() })
 
 describe('RunningWhaleTail', () => {
+  it('uses a neutral progress spinner for a downstream brand', () => {
+    vi.stubEnv('DSH_CLIENT_BRAND_NAME', 'Fixture Restaurant')
+    const view = render(<RunningWhaleTail />)
+    expect(view.container.querySelector('[data-state="ongoing"]')).toBeTruthy()
+    expect(view.container.querySelector('svg[viewBox="0 0 16 16"]')).toBeNull()
+  })
+
   it('renders a decorative mask seat and static SVG without inline styles', () => {
     const view = render(<RunningWhaleTail />)
     const icon = view.container.firstElementChild!

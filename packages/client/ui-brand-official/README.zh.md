@@ -29,6 +29,8 @@ kind: "package-reference"
 
 ### 选择 profile
 
+未指定构建 profile 的下游构建，可以从自己的单一公开品牌配置提供 `DSH_CLIENT_BRAND_NAME`、`DSH_CLIENT_BRAND_LOGO_URL` 和 `DSH_CLIENT_BRAND_TAGLINE`。这样无需 `official` profile 即可启用侧栏标志／名称和首屏标志 slot。自定义品牌不挂载鲸鱼背景。Logo URL 是公开构建数据，也可以是 data URL；这些变量不应包含凭据。`DSH_CLIENT_BRAND_SLOGAN` 和 `DSH_CLIENT_COMPOSER_PLACEHOLDER` 由会话界面负责。自定义值必须传给未指定 profile 的构建：显式选择上游 `local`／`official` profile 会按设计替换自定义公开变量。未提供自定义名称时，下述上游行为保持不变。
+
 `DSH_CLIENT_BUILD_PROFILE` 决定渲染哪个品牌。`official` 构建显示官方侧栏标志和名称；任何其他取值都让外壳回退——鱼形标志与本地构建标签——保持原样。会话首屏无论 profile 如何都显示来自 `dsh-client-ui-conversation` 的动画首屏鱼，因为这个回退本身就是官方标志。两种情况下插件都会照常加载并通过校验；只有侧栏图形注册受 profile 门控；各构建 profile 共用首页背景。
 
 ### 首页反馈

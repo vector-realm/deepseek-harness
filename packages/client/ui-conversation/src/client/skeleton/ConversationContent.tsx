@@ -107,7 +107,7 @@ export function ConversationContent(props: ConversationContentProps) {
     ? undefined
     : workspaceDisplayTitle(storedChipTitle, t('workspace.defaultName'))
 
-  const heroWorkspaceRow = (
+  const heroWorkspaceRow = process.env.DSH_CLIENT_BRAND_NAME ? null : (
     <div className={css.heroWorkspaceRow}>
       <WorkspaceChip
         buttonRef={pickerAnchor}
@@ -159,7 +159,7 @@ export function ConversationContent(props: ConversationContentProps) {
         // block keeps the model seat live because choosing a model is how the
         // user clears it.
         ? { blocked: composerBlock, placeholder: composerBlock.reason }
-        : hero ? { placeholder: t('placeholder.hero') } : {}),
+        : hero ? { placeholder: process.env.DSH_CLIENT_COMPOSER_PLACEHOLDER || t('placeholder.hero') } : {}),
   })
 
   const composerBar = (

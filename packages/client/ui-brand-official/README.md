@@ -29,6 +29,8 @@ The shipped Web and Desktop compositions already mount this plugin. Home feedbac
 
 ### Choosing the profile
 
+A downstream unnamed build can supply `DSH_CLIENT_BRAND_NAME`, `DSH_CLIENT_BRAND_LOGO_URL`, and `DSH_CLIENT_BRAND_TAGLINE` from its own single public brand configuration. This activates the sidebar mark/name and hero-mark slots without an `official` profile. The custom brand does not mount the whale background. The logo URL is public build data, including a data URL; no credentials belong in these variables. The conversation owns `DSH_CLIENT_BRAND_SLOGAN` and `DSH_CLIENT_COMPOSER_PLACEHOLDER`. These custom values must be passed to an unnamed build: explicit upstream `local`/`official` profile selection intentionally replaces custom public variables. When no custom name is supplied, the upstream behavior below remains unchanged.
+
 `DSH_CLIENT_BUILD_PROFILE` selects which brand renders. An `official` build shows the official sidebar mark and name; any other value leaves the shell fallbacks — the fish mark and the local-build label — in place. The conversation hero shows the animated hero fish from `dsh-client-ui-conversation` regardless of profile, because that fallback is already the official mark. The plugin still loads and validates in both cases; only the sidebar artwork registration is profile-gated; the home background is shared across build profiles.
 
 ### Home feedback

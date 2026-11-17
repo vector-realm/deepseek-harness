@@ -422,6 +422,19 @@ function mount(
 }
 
 describe('Hero chrome', () => {
+  it('renders public product copy without the upstream preview badge', () => {
+    vi.stubEnv('DSH_CLIENT_BRAND_NAME', 'Fixture Restaurant')
+    vi.stubEnv('DSH_CLIENT_BRAND_SLOGAN', 'Fixture restaurant slogan')
+    try {
+      const view = render(<HeroShell t={makeTranslate(en, commonEn)} renderSlot={() => null} />)
+      expect(view.getByText('Fixture restaurant slogan')).toBeTruthy()
+      expect(view.queryByText('Into the Unknown')).toBeNull()
+      expect(view.queryByText('Preview')).toBeNull()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('renders the English preview badge through the hero locale seat', () => {
     const renderSlot = vi.fn<(key: string, owner: object, opts?: { fallback?: ReactNode }) => ReactNode>(() => null)
     const view = render(<HeroShell t={makeTranslate(en, commonEn)} renderSlot={renderSlot as never} />)

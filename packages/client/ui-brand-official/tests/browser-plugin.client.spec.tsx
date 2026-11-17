@@ -38,6 +38,32 @@ async function bench(declare = true) {
 }
 
 describe('official browser-brand plugin', () => {
+  it('uses the supplied public identity in an unnamed build without any whale decoration', async () => {
+    vi.stubEnv('DSH_CLIENT_BUILD_PROFILE', undefined)
+    vi.stubEnv('DSH_CLIENT_BRAND_NAME', 'Fixture Restaurant')
+    vi.stubEnv('DSH_CLIENT_BRAND_TAGLINE', 'Fixture adviser')
+    vi.stubEnv('DSH_CLIENT_BRAND_LOGO_URL', 'data:image/svg+xml;base64,PHN2Zy8+')
+    const subject = await bench()
+    const fiber = subject.ctx.plugin({ inject: [...inject], apply })
+    try {
+      await fiber.await()
+      expect(subject.slots.entries('conversation.hero.frame')).toHaveLength(0)
+      for (const hole of ['sidebar.brand.mark', 'sidebar.brand.name', HERO_HOLE] as const) {
+        expect(subject.slots.entries(hole)).toHaveLength(1)
+      }
+      const name = render(<OfficialBrandName />)
+      expect(name.getByText('Fixture Restaurant')).toBeTruthy()
+      expect(name.getByText('Fixture adviser')).toBeTruthy()
+      name.unmount()
+      const mark = render(<OfficialBrandMark size={34} />)
+      expect(mark.container.querySelector('img')?.getAttribute('src')).toBe('data:image/svg+xml;base64,PHN2Zy8+')
+      expect(mark.container.querySelector('svg')).toBeNull()
+    } finally {
+      await fiber.dispose()
+    }
+    expect(subject.slots.entries(HERO_HOLE)).toHaveLength(0)
+  })
+
   it('keeps the host Loader entry inert', () => {
     expect(hostApply).not.toThrow()
   })

@@ -308,6 +308,13 @@
   letter-spacing: 0.04em;
 }
 
+/* A downstream name and tagline are two full text rows, not artwork compressed into the upstream 24px seat. */
+.root[data-custom-brand] .brandIdentity,
+.root[data-custom-brand] .brandName {
+  height: calc(var(--dsw-brand-name-line-height) + var(--dsw-brand-tagline-line-height) + var(--dsw-brand-tagline-gap));
+  align-items: flex-start;
+}
+
 .fallbackBrandName {
   font-size: 17px;
   letter-spacing: 0px;
@@ -841,4 +848,28 @@
     transition: none;
     animation: none;
   }
+}
+
+/* The downstream business navigation has fewer rows and a separate device footer. */
+.root[data-custom-brand]:not(.collapsed) .logoRow {
+  height: 80px;
+  padding-top: 10px;
+  padding-bottom: 24px;
+}
+
+.root[data-custom-brand]:not(.collapsed) .newSessionRow {
+  margin-top: 8px;
+  margin-bottom: 12px;
+}
+
+.root[data-custom-brand]:not(.collapsed) .newSession {
+  height: 40px;
+}
+
+.root[data-custom-brand]:not(.collapsed) .panelList {
+  gap: 8px;
+}
+
+.root[data-custom-brand]:not(.collapsed) .panelRow {
+  min-height: 40px;
 }

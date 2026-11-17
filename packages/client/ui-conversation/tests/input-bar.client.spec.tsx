@@ -2127,6 +2127,16 @@ describe('strips and variants', () => {
 })
 
 describe('command launcher chrome and control seats', () => {
+  it('hides the developer command launcher for a downstream brand while retaining model control seats', () => {
+    vi.stubEnv('DSH_CLIENT_BRAND_NAME', 'Fixture Restaurant')
+    try {
+      const { view, slotCalls } = bench({ toggleCommandMenu: vi.fn() })
+      expect(view.queryByLabelText('添加文件或调用指令')).toBeNull()
+      expect(slotCalls.some(call => call.key === 'conversation.input.model')).toBe(true)
+      expect(slotCalls.some(call => call.key === 'conversation.input.right')).toBe(true)
+    } finally { vi.unstubAllEnvs() }
+  })
+
   it('renders the command launcher and dispatches every empty control seat', () => {
     const { view, slotCalls } = bench()
     expect(view.getByLabelText('添加文件或调用指令')).toBeTruthy()

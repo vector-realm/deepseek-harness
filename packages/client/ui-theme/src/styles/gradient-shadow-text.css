@@ -1,4 +1,12 @@
 body {
+  /* Public downstream brand roles; themes can override these without editing the brand component. */
+  --dsw-brand-name-font-size: 14px;
+  --dsw-brand-name-line-height: 24px;
+  --dsw-brand-name-font-weight: 700;
+  --dsw-brand-tagline-font-size: 12px;
+  --dsw-brand-tagline-line-height: 18px;
+  --dsw-brand-tagline-font-weight: 400;
+  --dsw-brand-tagline-gap: 4px;
   --dsw-linear-gradient-think: linear-gradient(180deg, #fff 20.19%, rgba(255, 255, 255, 0) 100%);
   --dsw-linear-think-select: linear-gradient(180deg, #f5f6f7 20.19%, rgba(245, 246, 247, 0) 100%);
   /* 阴影 */

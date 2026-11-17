@@ -21,11 +21,16 @@ function escapeHtmlText(value: string): string {
 
 /** Project the public build title into the initial HTML document. */
 function clientDocumentTitle(): Plugin {
-  const title = escapeHtmlText(process.env.DSH_CLIENT_TITLE ?? DEFAULT_CLIENT_TITLE)
+  const title = escapeHtmlText(process.env.DSH_CLIENT_BRAND_NAME || process.env.DSH_CLIENT_TITLE || DEFAULT_CLIENT_TITLE)
   return {
     name: 'dsh-client-document-title',
     transformIndexHtml(html) {
-      return html.replace('<title>DSH Local Build</title>', `<title>${title}</title>`)
+      const branded = html.replace('<title>DSH Local Build</title>', `<title>${title}</title>`)
+      const logo = process.env.DSH_CLIENT_BRAND_LOGO_URL
+      if (!logo) return branded
+      const href = escapeHtmlText(logo).replace(/"/g, '&quot;')
+      return branded.replace(/<link rel="icon"[^>]*>/g, `<link rel="icon" type="image/svg+xml" href="${href}" />`)
+        .replace('<meta name="apple-mobile-web-app-title" content="DSH" />', `<meta name="apple-mobile-web-app-title" content="${title.replace(/"/g, '&quot;')}" />`)
     },
   }
 }

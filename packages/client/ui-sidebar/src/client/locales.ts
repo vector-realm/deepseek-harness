@@ -4,8 +4,8 @@
 export const zh = {
   'panels.unpinTooltip': '从左侧栏取消固定',
   'panels.unpin': '从侧边栏取消固定{name}',
-  'session.new': '新会话',
-  'session.new.label': '新建会话',
+  'session.new': process.env.DSH_CLIENT_BRAND_NAME ? '对话' : '新会话',
+  'session.new.label': process.env.DSH_CLIENT_BRAND_NAME ? '对话' : '新建会话',
   'toggle.open': '打开侧边栏',
   'toggle.collapse': '收起侧边栏',
   'panels.label': '全局面板',

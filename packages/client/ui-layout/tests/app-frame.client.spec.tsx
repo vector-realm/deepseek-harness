@@ -190,6 +190,16 @@ afterEach(() => {
 })
 
 describe('AppFrame', () => {
+  it('keeps the public brand title after browser boot and Session title changes', () => {
+    vi.stubEnv('DSH_CLIENT_BRAND_NAME', 'Fixture Restaurant')
+    selectedSessionTitle = 'Daily question'
+    const { rerenderFrame } = mountFrame()
+    expect(document.title).toBe('Daily question — Fixture Restaurant')
+    selectedSessionTitle = undefined
+    rerenderFrame()
+    expect(document.title).toBe('Fixture Restaurant')
+  })
+
   it('localizes the product title without a configured build title', () => {
     mountFrame()
     expect(document.title).toBe('DSH Local Build')

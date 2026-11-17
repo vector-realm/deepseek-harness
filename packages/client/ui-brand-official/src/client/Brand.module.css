@@ -1,0 +1,32 @@
+.mark {
+  display: block;
+  flex: none;
+  object-fit: contain;
+}
+
+.identity {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dsw-brand-tagline-gap);
+  min-width: 0;
+  letter-spacing: normal;
+}
+
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--dsw-brand-name-font-size);
+  line-height: var(--dsw-brand-name-line-height);
+  font-weight: var(--dsw-brand-name-font-weight);
+}
+
+.tagline {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-secondary);
+  font-size: var(--dsw-brand-tagline-font-size);
+  line-height: var(--dsw-brand-tagline-line-height);
+  font-weight: var(--dsw-brand-tagline-font-weight);
+}

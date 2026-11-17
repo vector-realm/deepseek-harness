@@ -432,7 +432,7 @@ export const InputBar = memo(function InputBar({
   // (the gate never consults plan mode), so the actionable hint wins.
     : canSteerQueue
       ? t('placeholder.steerQueue')
-      : planActive ? t('placeholder.plan') : t('placeholder.default'))
+      : planActive ? t('placeholder.plan') : process.env.DSH_CLIENT_COMPOSER_PLACEHOLDER || t('placeholder.default'))
 
   return (
     <div className={clsx(css.root, variant === 'hero' && css.hero)}>
@@ -503,7 +503,7 @@ export const InputBar = memo(function InputBar({
         />
         <div ref={rowRef} className={css.row}>
           <div className={css.tools} hidden={activity}>
-            <Tooltip label={t('input.commands')} side="top" delayMs={500} portal>
+            {!process.env.DSH_CLIENT_BRAND_NAME && <Tooltip label={t('input.commands')} side="top" delayMs={500} portal>
               <button
                 type="button"
                 className={css.add}
@@ -516,7 +516,7 @@ export const InputBar = memo(function InputBar({
               >
                 <IconPlusOutlineMedium size={14} />
               </button>
-            </Tooltip>
+            </Tooltip>}
             <input
               ref={fileInputRef}
               type="file"

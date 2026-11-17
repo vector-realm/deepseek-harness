@@ -1,5 +1,20 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { clampWidth, computeColumns } from '../src/client/columns.ts'
+
+it.each([[undefined, 264, 280], ['Fixture Restaurant', 232, 232]] as const)(
+  'keeps brand %s sidebar defaults and column geometry consistent', async (brand, min, initial) => {
+    vi.stubEnv('DSH_CLIENT_BRAND_NAME', brand)
+    vi.resetModules()
+    try {
+      const columns = await import('../src/client/columns.ts')
+      expect(columns.SIDEBAR_MIN).toBe(min)
+      expect(columns.SIDEBAR_DEFAULT).toBe(initial)
+      expect(columns.computeColumns(1200, columns.SIDEBAR_DEFAULT, 0))
+        .toEqual({ sidebar: initial, center: 1200 - initial, rightbar: 0 })
+      expect(columns.computeColumns(1200, 1, 0).sidebar).toBe(min)
+    } finally { vi.unstubAllEnvs(); vi.resetModules() }
+  },
+)
 
 describe('clampWidth', () => {
   it('clamps into the range and rounds', () => {
