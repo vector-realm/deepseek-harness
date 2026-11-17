@@ -164,6 +164,7 @@ function readShell(
  * Read the user's login-shell environment once; Windows GUI launches already inherit the registry
  * environment, so `win32` returns `base` unchanged. Never rejects: each failing candidate is
  * recorded and the next one tried, and `base` is returned when all fail or the read is aborted.
+ * `DSH_SKIP_LOGIN_SHELL_ENV=1` preserves a launcher's isolated environment without running rc files.
  * @param base - Environment Desktop inherited.
  * @param config - Validated read settings.
  * @param options - Platform, candidates, and cancellation.
@@ -172,6 +173,7 @@ function readShell(
 export async function readDesktopLoginShellEnvironment(
   base: NodeJS.ProcessEnv, config: DesktopLoginShellConfig, options: DesktopLoginShellReadOptions = {},
 ): Promise<DesktopLoginShellResult> {
+  if (base.DSH_SKIP_LOGIN_SHELL_ENV === '1') return { environment: base, failures: [] }
   const { platform = process.platform, shells = loginShellCandidates(), signal } = options
   if (platform === 'win32') return { environment: base, failures: [] }
   const failures: DesktopLoginShellFailure[] = []

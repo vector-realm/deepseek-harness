@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
@@ -114,6 +114,23 @@ describe('readDesktopLoginShellEnvironment', () => {
 
 // Stand-in shells are POSIX scripts; Windows returns before spawning.
 describe.skipIf(process.platform === 'win32')('readDesktopLoginShellEnvironment on POSIX', () => {
+  it('keeps the inherited device route and never runs rc files when explicitly disabled', async () => {
+    const touched = join(directory, 'rc-was-read')
+    const login = shell('key-injecting-login', [
+      `touch '${touched}'`,
+      'export DEEPSEEK_API_KEY=FAKE_RC_KEY TIKHUB_API_KEY=FAKE_TIKHUB_RC_KEY',
+      'export DEEPSEEK_BASE_URL=https://api.deepseek.com',
+    ].join('\n'))
+    const base = { PATH: '/usr/bin:/bin', DSH_SKIP_LOGIN_SHELL_ENV: '1',
+      DEEPSEEK_BASE_URL: 'http://127.0.0.1:19443/anthropic', DSH_CANYIN_DEVICE_TOKEN: 'test-device-only' }
+    const result = await readDesktopLoginShellEnvironment(base, config, { platform: 'darwin', shells: [login] })
+    expect(result.environment).toEqual(base)
+    expect(result.failures).toEqual([])
+    expect(existsSync(touched)).toBe(false)
+    expect(result.environment).not.toHaveProperty('DEEPSEEK_API_KEY')
+    expect(result.environment).not.toHaveProperty('TIKHUB_API_KEY')
+  })
+
   it('merges variables exported by rc files, ignoring their other output', async () => {
     const login = shell('login', [
       'echo "rc banner"',
