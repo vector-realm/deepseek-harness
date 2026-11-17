@@ -64,16 +64,20 @@ export class ModelListingCache {
 
   /**
    * The last published view, without I/O.
+   * @param settings - optional route policy; a fail-closed route hides failed and expired listings.
    * @returns the credential state and listing of the current scope.
    */
-  current(): ListingView {
-    return { authenticated: this.scope !== undefined, listing: this.listing }
+  current(settings?: ListingSettings): ListingView {
+    const unavailable = settings?.failClosed === true && (this.failing || this.settledAt === undefined
+      || (settings.maxAgeMs > 0 && this.dependencies.now() - this.settledAt >= settings.maxAgeMs))
+    return { authenticated: this.scope !== undefined, listing: unavailable ? undefined : this.listing }
   }
 
   /**
    * Resolve the view for the current credential. The first access of a scope
    * waits for its load, which the request deadline bounds; later accesses
-   * return at once and refresh a stale listing in the background. After a load settles,
+   * return at once and refresh a stale listing in the background. A fail-closed route instead waits for a stale refresh.
+   * After a load settles,
    * automatic refresh uses the latest route settings; failures retain the last successful listing, including badges.
    * @param settings - endpoint and timing of the caller's configuration generation.
    * @param signal - abandons this wait only; the shared load continues.
@@ -82,14 +86,16 @@ export class ModelListingCache {
   async view(settings: ListingSettings, signal?: AbortSignal): Promise<ListingView> {
     const credential = await this.dependencies.credential(settings.url)
     signal?.throwIfAborted()
-    if (this.closed) return this.current()
+    if (this.closed) return this.current(settings)
     const scope = credential === undefined ? undefined : `${settings.url}\n${createHash('sha256').update(credential).digest('hex')}`
     if (scope !== this.scope) this.rescope(scope)
     if (credential !== undefined) {
-      if (this.settledAt === undefined) await abandonable(this.start(settings, credential), signal)
-      else if (this.dependencies.now() - this.settledAt >= settings.maxAgeMs) void this.start(settings, credential)
+      if (this.settledAt === undefined
+        || (settings.failClosed === true && this.dependencies.now() - this.settledAt >= settings.maxAgeMs)) {
+        await abandonable(this.start(settings, credential), signal)
+      } else if (this.dependencies.now() - this.settledAt >= settings.maxAgeMs) void this.start(settings, credential)
     }
-    return this.current()
+    return this.current(settings)
   }
 
   /** Discard the listing and abort any in-flight load; the next access loads again and waits like a first access. */
@@ -131,7 +137,7 @@ export class ModelListingCache {
     const run = this.dependencies.load(settings.url, credential, limit.signal)
       .then((listing) => {
         if (generation !== this.generation) return
-        const changed = !deepEqualJson(this.listing, listing)
+        const changed = !deepEqualJson(this.listing, listing) || (settings.failClosed === true && this.failing)
         this.listing = listing
         this.settledAt = this.dependencies.now()
         this.failing = false
@@ -140,11 +146,14 @@ export class ModelListingCache {
       }, (error: unknown) => {
         if (generation !== this.generation) return
         if (!this.failing) {
-          const fallback = this.listing === undefined ? 'using the bundled catalog' : 'keeping the previous catalog'
+          const fallback = settings.failClosed === true ? 'offering no models'
+            : this.listing === undefined ? 'using the bundled catalog' : 'keeping the previous catalog'
           this.dependencies.warn(`model listing from ${settings.url} failed (${String(error)}); ${fallback}`)
         }
+        const wasFailing = this.failing
         this.settledAt = this.dependencies.now()
         this.failing = true
+        if (settings.failClosed === true && !wasFailing) this.notify()
       })
       .finally(() => {
         limit[Symbol.dispose]()

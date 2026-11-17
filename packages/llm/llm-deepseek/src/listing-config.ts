@@ -43,6 +43,8 @@ export interface ListingTiming {
 export interface ListingSettings extends ListingTiming {
   /** Listing endpoint; it always shares the Messages origin. */
   readonly url: string
+  /** Internal route policy: an unavailable or expired listing cannot authorize a fallback catalog. */
+  readonly failClosed?: boolean
 }
 
 /**

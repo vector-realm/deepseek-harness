@@ -11,28 +11,32 @@ import type {
   Config as ProtocolConfig, DeepSeekConnectionOptions, ListingSettings, ModelListingConfig, ModelListingOptions, Options as ProtocolOptions,
 } from '@deepseek-ai/dsh-llm-deepseek'
 
-/** Origin of the official API, the only endpoint whose `/models` listing this route follows. */
+/** Origin whose listing is followed by default without a downstream opt-in. */
 const OFFICIAL_ORIGIN = new URL(PUBLIC_BASE_URL).origin
 
 /** Messages configuration with a per-request API-key reference. */
 export interface Config extends ProtocolConfig, ModelListingConfig {
   /** Credential reference resolved per request; defaults to DEEPSEEK_API_KEY. */
   apiKeyEnv: Volatile<string>
+  /** Opt into the same-origin listing on a relay; unavailable or stale listings offer no models. */
+  followModelListing: Volatile<boolean>
 }
 export const Config = z.object({
   ...deepSeekConfigFields,
   ...modelListingConfigFields,
   apiKeyEnv: z.string().role('credential-ref').default('DEEPSEEK_API_KEY').volatile(),
+  followModelListing: z.boolean().default(false).volatile(),
 })
 /** Plain deployment inputs for the API-key provider. */
-export type Options = ProtocolOptions & ModelListingOptions & { apiKeyEnv?: string }
+export type Options = ProtocolOptions & ModelListingOptions & { apiKeyEnv?: string; followModelListing?: boolean }
 /** Endpoint and credential reference captured from the same configuration generation. */
 export interface ResolvedDeepSeekOptions extends DeepSeekConnectionOptions {
   /** Credential reference used only for this connection snapshot. */
   apiKeyEnv: CredentialRef
+  /** Whether the authenticated listing is the required, fail-closed catalog authority. */
+  followModelListing: boolean
   /**
-   * The official `/models` listing this generation follows; absent when `models`
-   * differs from the built-in catalog or the endpoint is not the official API.
+   * The same-origin `/models` listing this generation follows. Relay following requires an explicit opt-in.
    */
   listing?: ListingSettings
 }
@@ -41,7 +45,7 @@ export interface ResolvedDeepSeekOptions extends DeepSeekConnectionOptions {
  * @returns detached resolver inputs.
  */
 export function plainOptions(config: Config): Options {
-  return { ...protocolOptions(config), apiKeyEnv: config.apiKeyEnv.get() }
+  return { ...protocolOptions(config), apiKeyEnv: config.apiKeyEnv.get(), followModelListing: config.followModelListing.get() }
 }
 /** Resolve API-key, listing, and protocol settings together.
  * @param config - raw deployment settings.
@@ -49,13 +53,19 @@ export function plainOptions(config: Config): Options {
  * @returns validated endpoint facts, the matching credential reference, and the listing the catalog follows.
  */
 export function resolveAdapterOptions(config: Options, environment?: LaunchEnvironmentSnapshot): ResolvedDeepSeekOptions {
-  const { modelsTimeoutMs: _timeout, modelsMaxAgeMs: _maxAge, apiKeyEnv, ...messages } = config
+  const { modelsTimeoutMs: _timeout, modelsMaxAgeMs: _maxAge, apiKeyEnv, followModelListing = false, ...messages } = config
+  if (typeof followModelListing !== 'boolean') throw new Error('llm-deepseek-api-key: followModelListing must be a boolean')
   const timing = resolveListingTiming(config, 'llm-deepseek-api-key')
   const connection = resolveProtocolOptions(messages, environment)
-  const listed = new URL(connection.baseURL).origin === OFFICIAL_ORIGIN && isBuiltInCatalog(connection.models)
+  const builtIn = isBuiltInCatalog(connection.models)
+  if (followModelListing && !builtIn) throw new Error('llm-deepseek-api-key: followModelListing requires the built-in catalog')
+  const listed = (followModelListing || new URL(connection.baseURL).origin === OFFICIAL_ORIGIN) && builtIn
   return {
     ...connection,
     apiKeyEnv: credentialRef(apiKeyEnv ?? 'DEEPSEEK_API_KEY'),
-    ...listed ? { listing: { url: modelListingURL(connection.baseURL), ...timing } } : {},
+    followModelListing,
+    ...listed ? {
+      listing: { url: modelListingURL(connection.baseURL), ...timing, ...followModelListing ? { failClosed: true } : {} },
+    } : {},
   }
 }

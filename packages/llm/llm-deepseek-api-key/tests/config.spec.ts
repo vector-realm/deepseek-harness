@@ -1,9 +1,18 @@
-/** The API-key route follows the official listing only for the built-in catalog on the official endpoint. */
+/** Listing defaults stay official-only; a relay can explicitly require a same-origin, fail-closed catalog. */
 import { expect, it } from 'vitest'
 import { resolveAdapterOptions as resolveProtocolOptions } from '@deepseek-ai/dsh-llm-deepseek'
 import { Config, plainOptions, resolveAdapterOptions } from '../src/config.ts'
 
 const LISTING = { url: 'https://api.deepseek.com/models', timeoutMs: 5_000, maxAgeMs: 600_000 }
+
+it('opts into the same-origin relay listing with a closed default catalog', () => {
+  const options = plainOptions(Config({ baseURL: 'https://relay.example/anthropic/v1', followModelListing: true }))
+  expect(options.followModelListing).toBe(true)
+  expect(resolveAdapterOptions(options).listing).toEqual({ ...LISTING, url: 'https://relay.example/models', failClosed: true })
+  expect(resolveAdapterOptions({ baseURL: 'http://127.0.0.1:19443/anthropic', followModelListing: true }).listing?.url)
+    .toBe('http://127.0.0.1:19443/models')
+  expect(() => resolveAdapterOptions({ followModelListing: true, models: [{ id: 'custom' }] })).toThrow('built-in catalog')
+})
 
 it('follows the official listing while the catalog is the built-in one', () => {
   expect(resolveAdapterOptions({}).listing).toEqual(LISTING)

@@ -42,7 +42,7 @@ function harness(timeoutMs = 60_000, honorsAbort = true) {
   // Every access passes the same configuration generation.
   const catalog = {
     view: (signal?: AbortSignal) => cache.view(settings, signal),
-    current: () => cache.current(),
+    current: () => cache.current(settings),
     invalidate: () => { cache.invalidate() },
     dispose: () => cache.dispose(),
   }
@@ -52,6 +52,53 @@ function harness(timeoutMs = 60_000, honorsAbort = true) {
     credential: (value: string | undefined) => { token = value },
   }
 }
+
+it('hides a strict listing once stale or failed, waits for refresh, and notifies on same-content recovery', async () => {
+  const h = harness()
+  h.settings.failClosed = true
+  const first = h.catalog.view()
+  await h.flush()
+  h.loads[0]!.settle.resolve(listing('priced-flash'))
+  await expect(first).resolves.toEqual({ authenticated: true, listing: listing('priced-flash') })
+  h.advance(101)
+  expect(h.catalog.current().listing).toBeUndefined()
+  let resolved = false
+  const refresh = h.catalog.view().then((view) => { resolved = true; return view })
+  await h.flush()
+  expect(resolved).toBe(false)
+  h.loads[1]!.settle.reject(new Error('relay unavailable'))
+  await expect(refresh).resolves.toEqual({ authenticated: true, listing: undefined })
+  expect(h.changed).toHaveBeenCalledTimes(2)
+  expect(h.warn).toHaveBeenLastCalledWith(expect.stringContaining('offering no models'))
+  h.advance(101)
+  const recovered = h.catalog.view()
+  await h.flush()
+  h.loads[2]!.settle.resolve(listing('priced-flash'))
+  await expect(recovered).resolves.toEqual({ authenticated: true, listing: listing('priced-flash') })
+  expect(h.changed).toHaveBeenCalledTimes(3)
+})
+
+it('refreshes every strict zero-age access and never reuses a previous device listing', async () => {
+  const h = harness()
+  h.settings.failClosed = true
+  h.settings.maxAgeMs = 0
+  const first = h.catalog.view()
+  await h.flush()
+  h.loads[0]!.settle.resolve(listing('priced-flash'))
+  await expect(first).resolves.toMatchObject({ listing: listing('priced-flash') })
+  h.credential('device-b')
+  const next = h.catalog.view()
+  await h.flush()
+  expect(h.catalog.current().listing).toBeUndefined()
+  expect(h.loads[1]!.token).toBe('device-b')
+  h.loads[1]!.settle.reject(new Error('unauthorized device'))
+  await expect(next).resolves.toEqual({ authenticated: true, listing: undefined })
+  const retry = h.catalog.view()
+  await h.flush()
+  expect(h.loads).toHaveLength(3)
+  h.loads[2]!.settle.resolve(listing('device-b-priced'))
+  await expect(retry).resolves.toMatchObject({ listing: listing('device-b-priced') })
+})
 
 it('reports an unauthenticated view without loading', async () => {
   const { catalog, loads, credential } = harness()

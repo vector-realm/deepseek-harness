@@ -2053,6 +2053,8 @@ export interface Config extends Omit<ProtocolConfig, 'models'>, ModelListingConf
 export interface Config extends ProtocolConfig, ModelListingConfig {
   /** Credential reference resolved per request; defaults to DEEPSEEK_API_KEY. */
   apiKeyEnv: Volatile<string>
+  /** Opt into the same-origin listing on a relay; unavailable or stale listings offer no models. */
+  followModelListing: Volatile<boolean>
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-llm-deepseek-api-key -->

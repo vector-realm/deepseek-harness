@@ -37,7 +37,7 @@ Authentication resolution returns the validated API key in `x-api-key` for both 
 
 The endpoint and credential reference come from one configuration resolution. In-flight requests retain that snapshot; subsequent updates affect subsequent calls. Account login state cannot change this route’s credential.
 
-`models` is an independently configurable catalog for this provider; defaults and protocol capabilities come from the shared transport. While `models` equals the built-in catalog and the Messages origin is the official API, `https://api.deepseek.com`, the route serves the official `GET https://api.deepseek.com/models` listing instead. Listing requests carry the API key in `x-api-key` and the harness `User-Agent`, and reject redirects; without an API key the route requests nothing. Any other endpoint, including one named by `baseURL` or `$DEEPSEEK_BASE_URL`, serves `models` and requests no listing. Discovery does not probe inference endpoints.
+`models` is an independently configurable catalog for this provider; defaults and protocol capabilities come from the shared transport. By default, while `models` equals the built-in catalog and the Messages origin is the official API, `https://api.deepseek.com`, the route serves the official `GET https://api.deepseek.com/models` listing instead. Listing requests carry the API key in `x-api-key` and the harness `User-Agent`, and reject redirects; without an API key the route requests nothing. With `followModelListing` unset or false, any other endpoint, including one named by `baseURL` or `$DEEPSEEK_BASE_URL`, serves `models` and requests no listing. Discovery does not probe inference endpoints.
 
 The first access waits for the listing up to `modelsTimeoutMs`. After first use, the Host refreshes automatically every `modelsMaxAgeMs` (ten minutes by default), including while the page is idle. Later accesses return the cached listing while a refresh runs. A failed or empty listing retains the previous listing, including badges; before any listing loads, the route serves the built-in catalog of the current version (`deepseek-flash` and `deepseek-v4-pro`). A listing HTTP 401 fails only that load. Each loaded listing, the first failure of a failing streak with the catalog it falls back to, each listing entry hidden because its declarations are unreadable or unusable, and each dropped badge are written to stderr with the `[llm-deepseek-api-key]` tag; stdout remains available for protocol messages, and secrets are never logged. Changed listings emit `llm/models-updated`, so open selectors reload without a page refresh. Omitted or `null` badge metadata clears a previous badge; no separate clear operation is needed. Plugin disposal stops refreshes and waits for active loads.
 
@@ -45,8 +45,16 @@ Listed models are offered, merged with this build's entries, and refused before 
 
 A `models` list that differs from the built-in catalog replaces the catalog and stops listing requests; the Models page stores an edited catalog there. Removing that list, as **Restore defaults** on the Models page does, returns the route to the listing, and the next access loads the listing again even when the cached one is still fresh. A list identical to the built-in catalog counts as uncustomized.
 
+<a id="relay-catalog-authority"></a>
+### Relay catalog authority
+
+The opt-in `followModelListing: true` follows `/models` on exactly the Messages `baseURL` origin, including its port. It adds no independent listing URL. It uses the same credential reference and `x-api-key` header, rejects redirects, and keeps the existing endpoint/credential-hash cache isolation. A relay can therefore advertise only models in its own price table. The catalog must remain the built-in default; combining this flag with a customized `models` list is a configuration error.
+
+In this mode a missing credential, first-load failure, HTTP 401, malformed/empty response, or failed/expired cached listing offers **no models**. Stale accesses wait for refresh instead of serving the old catalog. `modelsMaxAgeMs: 0` refreshes on every access. Recovery from failure notifies selectors even when the returned catalog is unchanged. Unlisted ids, including a previously selected built-in model, are refused before inference with `MODEL_UNSUPPORTED`. The cloud still independently checks its price table and authorization. Without this opt-in the official route retains the fallback, retention and pass-through behavior described above.
+
 | Field | Default | Meaning |
 |---|---|---|
+| `followModelListing` | `false` | Require the authenticated same-origin listing; failures hide models and unlisted ids are refused |
 | `modelsTimeoutMs` | `5,000` | Deadline of one listing request and of a first-access wait |
 | `modelsMaxAgeMs` | `600,000` | Automatic refresh interval after first use, also used after failure; `0` refreshes on access only |
 

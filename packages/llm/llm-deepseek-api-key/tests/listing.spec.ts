@@ -48,6 +48,42 @@ async function host(key: string | undefined = 'fixture-api-key') {
 }
 const ids = async (ctx: Context) => (await ctx.llm.listModels('deepseek-official')).map(model => model.id)
 
+it('follows a relay listing only on its own origin, with the device credential and no redirect', async () => {
+  const seen: Request[] = []
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+    const request = new Request(input, init)
+    seen.push(request)
+    if (request.url !== 'https://relay.example/models') throw new Error('cross-origin listing attempt')
+    return Promise.resolve(listing(FLASH)())
+  })
+  const { ctx } = await host('fixture-device-token')
+  await ctx.plugin(ApiKey, { baseURL: 'https://relay.example/anthropic', followModelListing: true })
+  expect(await ids(ctx)).toEqual(['deepseek-flash'])
+  expect(seen).toHaveLength(1)
+  expect(seen[0]?.headers.get('x-api-key')).toBe('fixture-device-token')
+  expect(seen[0]?.redirect).toBe('error')
+  await expect(ctx.llm.prepareCall({ provider: 'deepseek-official', model: 'deepseek-v4-pro' })).rejects.toMatchObject({ code: 'MODEL_UNSUPPORTED' })
+  await expect(ctx.llm.prepareCall({ provider: 'deepseek-official', model: 'unlisted-pass-through' })).rejects.toMatchObject({ code: 'MODEL_UNSUPPORTED' })
+  expect(seen).toHaveLength(1)
+})
+
+it.each([401, 503])('offers no relay models after listing HTTP %s', async (status) => {
+  officialListing(() => new Response('unavailable', { status }))
+  const { ctx } = await host()
+  await ctx.plugin(ApiKey, { followModelListing: true })
+  expect(await ids(ctx)).toEqual([])
+  await expect(ctx.llm.prepareCall({ provider: 'deepseek-official', model: 'deepseek-flash' })).rejects.toMatchObject({ code: 'MODEL_UNSUPPORTED' })
+})
+
+it('offers no relay models and makes no listing request without a device credential', async () => {
+  const requests = officialListing(listing(FLASH))
+  const { ctx } = await host(undefined)
+  vi.stubEnv('DEEPSEEK_API_KEY', undefined)
+  await ctx.plugin(ApiKey, { followModelListing: true })
+  expect(await ids(ctx)).toEqual([])
+  expect(requests).toHaveLength(0)
+})
+
 it('follows the official listing while the catalog is the built-in one', async () => {
   const requests = officialListing(listing(FLASH, { ...PRO, id: 'deepseek-v5', ...requires('0.0.1') }, PRO))
   const { ctx, diagnostics } = await host()

@@ -60,16 +60,18 @@ export function apply(ctx: Context, config: Config): void {
   let reportedListing: ModelListing | undefined
   /** Resolve the catalog, reporting each listing's hidden entries and dropped badges once. */
   const connectionOf = (connection: ResolvedDeepSeekOptions, view: ListingView | undefined): OfficialConnection => {
-    if (view === undefined) return { ...connection, offered: connection.models, refusals: new Map(), badges: new Map() }
+    if (view === undefined && !connection.followModelListing) {
+      return { ...connection, offered: connection.models, refusals: new Map(), badges: new Map() }
+    }
     const catalog = resolveListedCatalog({
-      listing: view.listing?.entries,
+      listing: view?.listing?.entries ?? (connection.followModelListing ? [] : undefined),
       supported: connection.models,
       overrides: {},
       routeMaxTokens: connection.maxTokens,
       clientVersion: APP_IDENTITY.version,
     })
-    if (view.listing !== reportedListing) {
-      reportedListing = view.listing
+    if (view?.listing !== reportedListing) {
+      reportedListing = view?.listing
       for (const problem of catalog.problems) console.warn(LOG_TAG, problem)
     }
     return { ...connection, models: catalog.resolution, offered: catalog.offered, refusals: catalog.refusals, badges: catalog.badges }
@@ -81,7 +83,7 @@ export function apply(ctx: Context, config: Config): void {
     providerName: 'DeepSeek',
     options: () => {
       const connection = options()
-      return connectionOf(connection, connection.listing === undefined ? undefined : listings.current())
+      return connectionOf(connection, connection.listing === undefined ? undefined : listings.current(connection.listing))
     },
     connect: async (signal) => {
       const connection = options()
@@ -97,7 +99,12 @@ export function apply(ctx: Context, config: Config): void {
       return connectionOf(connection, view)
     },
     resolveAuth: async connection => ({ headers: { 'x-api-key': await resolveApiKey(connection) } }),
-    admit: (connection, model) => { refuseListedModel(model, connection.refusals.get(model)) },
+    admit: (connection, model) => {
+      refuseListedModel(model, connection.refusals.get(model))
+      if (connection.followModelListing && !connection.offered.some(entry => entry.id === model)) {
+        throw new LlmError(`model "${model}" is not offered by the authenticated model listing`, 'MODEL_UNSUPPORTED')
+      }
+    },
     discoverModels: async (provider) => {
       const connection = options()
       if (connection.listing === undefined) {
