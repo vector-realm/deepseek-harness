@@ -3,8 +3,9 @@ import { build } from 'vite'
 import { fileURLToPath } from 'node:url'
 import { readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import { repositoryClientBuildEnvironment, resolveClientBuildEnvironment } from '../../scripts/client-build-environment.ts'
+import { clientBuildValueDefines, repositoryClientBuildEnvironment, resolveClientBuildEnvironment } from '../../scripts/client-build-environment.ts'
 import { packagedImportsPlugin } from './scripts/desktop-bundle-imports.mjs'
+import { writeDesktopBrandAsset } from './scripts/desktop-brand-assets.ts'
 
 // This config runs after the workspace tsdown pass, not inside it: the main bundle inlines
 // workspace devDependencies from their lib/ output, which the concurrent workspace pass does
@@ -29,8 +30,8 @@ const clientEnvironment = resolveClientBuildEnvironment(process.env.DSH_CLIENT_V
 const clientVersion = clientEnvironment.DSH_CLIENT_VERSION
 if (clientVersion === undefined) throw new Error('desktop build: the client environment carries no DSH_CLIENT_VERSION')
 
-/** Inline the one public build value the Node entry reads; every other variable stays a runtime lookup. */
-const clientVersionDefine = { 'process.env.DSH_CLIENT_VERSION': JSON.stringify(clientVersion) }
+/** Fix public identity into the artifact; private deployment controls remain runtime lookups. */
+const publicClientDefines = clientBuildValueDefines(clientEnvironment)
 
 export default defineConfig([
   {
@@ -56,8 +57,9 @@ export default defineConfig([
   {
     entry: ['lib/types/main.js'],
     plugins: [packagedImportsPlugin(mainProcessImports)],
-    define: clientVersionDefine,
+    define: publicClientDefines,
     onSuccess: async () => {
+      await writeDesktopBrandAsset(import.meta.dirname, clientEnvironment.DSH_CLIENT_BRAND_LOGO_URL)
       await build({
         configFile: false,
         plugins: [{

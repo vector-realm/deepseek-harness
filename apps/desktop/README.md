@@ -31,6 +31,13 @@ Desktop runs the Harness workspace in a native application. This reference cover
 
 ## Application overview
 
+<a id="downstream-managed-source-client"></a>
+### Downstream managed source client
+
+An unnamed downstream build accepts public `DSH_CLIENT_BRAND_NAME`, `DSH_CLIENT_BRAND_PROTOCOL`, `DSH_CLIENT_BRAND_APP_ID`, and `DSH_CLIENT_BRAND_LOGO_URL` from its owner's single brand configuration. The browser uses the same logo URL; Desktop renders that base64 SVG locally into `lib/brand.png` for About, window and Dock artwork. No build-time remote logo fetch occurs. The shell's locale copy replaces only the full upstream product identity; model-provider labels and license attribution remain intact. The development carrier uses the supplied identity and URL protocol rather than registering the upstream `dsh` scheme. No installation or packaging is implied by a source build.
+
+The opt-in runtime flag `DSH_CANYIN_MANAGED=1` skips official welcome, login/account streams, native analytics and update checks, and opens the Host workspace directly. The downstream client then owns device activation, and its cloud API still enforces authorization. Native official account pages are unavailable in this mode. Business tools, disabled Host plugins, telemetry policy and credentials remain external profile configuration; this fork does not inject a downstream business patch. When the flag is absent, the upstream onboarding behavior remains unchanged. The flag does not weaken Host authentication or the login-shell isolation switch.
+
 Desktop reads the effective application theme from the Host startup settings response before showing the welcome or workspace window. Missing or invalid optional theme settings use system appearance; invalid values are logged. Windows workspace backgrounds remain opaque and follow the effective light/dark theme, including runtime changes; custom palettes use the built-in light/dark background approximation. macOS windows use a transparent background with sidebar vibrancy.
 
 Electron caches the last confirmed UI language in `userData/desktop/locale-cache` so startup recovery dialogs can use it before Host settings are available. Missing, invalid, or unreadable caches fall back to the system language; cache write failures do not block startup. A successful Host startup or a UI language change refreshes the cache. Until then, a changed system language may differ from the cached language.

@@ -31,6 +31,13 @@ Desktop 在原生应用中运行 Harness 工作区。本参考文档说明应用
 
 ## 应用概览
 
+<a id="downstream-managed-source-client"></a>
+### 下游托管源码客户端
+
+未指定构建 profile 的下游构建，从所属项目的单一品牌配置接受公开的 `DSH_CLIENT_BRAND_NAME`、`DSH_CLIENT_BRAND_PROTOCOL`、`DSH_CLIENT_BRAND_APP_ID` 和 `DSH_CLIENT_BRAND_LOGO_URL`。浏览器使用同一个 Logo URL；Desktop 在本机将其中的 base64 SVG 渲染为 `lib/brand.png`，供“关于”、窗口和 Dock 使用。构建时不会远程获取 Logo。外壳的本地化文案只替换完整的上游产品名称，模型提供方标签和许可证归属保持不变。开发载体使用传入的标识和 URL 协议，不注册上游 `dsh` scheme。源码构建不代表已经安装或打包。
+
+显式启用运行时标志 `DSH_CANYIN_MANAGED=1` 后，会跳过官方欢迎页、登录／账号流、原生埋点和更新检查，直接打开 Host 工作区。设备激活随后由下游客户端负责，云端 API 仍执行授权检查。此模式不提供原生官方账号页面。业务工具、禁用的 Host 插件、遥测策略和凭据仍由外部 profile 配置；此 fork 不注入下游业务补丁。未设置标志时，上游引导行为保持不变。该标志不会削弱 Host 鉴权或登录 Shell 隔离开关。
+
 Desktop 在显示欢迎页或工作区窗口前，从 Host 启动设置响应读取有效的应用主题。可选主题设置缺失或无效时使用系统外观；无效值会记录日志。Windows 工作区底色保持不透明，并跟随有效的浅色／深色主题及运行中的变化；自定义配色使用内置浅色／深色底色近似。macOS 窗口使用透明背景和侧边栏毛玻璃效果。
 
 Electron 在 `userData/desktop/locale-cache` 缓存最近确认的界面语言，使启动恢复弹窗在 Host 设置尚不可用时也能使用该语言。缓存缺失、无效或不可读时回退到系统语言；缓存写入失败不阻断启动。Host 成功启动或界面语言变更时会刷新缓存；在此之前，变更后的系统语言可能与缓存语言不同。

@@ -56,6 +56,9 @@ vi.mock('electron', () => ({
     name: 'Harness',
     requestSingleInstanceLock: () => true,
     setAsDefaultProtocolClient: vi.fn(),
+    setName: vi.fn(),
+    setAppUserModelId: vi.fn(),
+    dock: { setIcon: vi.fn() },
     whenReady: () => Promise.resolve(),
     getLocale: () => 'en',
     getVersion: () => '1.0.0',
@@ -176,6 +179,41 @@ afterEach(() => {
   vi.unstubAllEnvs()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+})
+
+it('opens a managed workspace without the official welcome/account service and keeps its own protocol', async () => {
+  vi.resetModules()
+  vi.clearAllMocks()
+  state.operations = undefined
+  state.accountListener = undefined
+  state.expiryListener = undefined
+  vi.stubEnv('DSH_CANYIN_MANAGED', '1')
+  vi.stubEnv('DSH_CLIENT_BRAND_NAME', 'Fixture Restaurant')
+  vi.stubEnv('DSH_CLIENT_BRAND_PROTOCOL', 'fixture-restaurant')
+  vi.stubEnv('DSH_CLIENT_BRAND_APP_ID', 'example.fixture.restaurant')
+  vi.stubEnv('DSH_CLIENT_VERSION', '1.2.3')
+  vi.stubEnv('DSH_DESKTOP_DEV_APP', '1')
+  vi.stubEnv('DSH_DESKTOP_DEV_PROJECT_DIR', '/development-profile')
+  vi.stubEnv('DSH_DESKTOP_PNPM_ENTRY', '/runtime/pnpm')
+  vi.stubEnv('DSH_DESKTOP_DSH_DIR', '/runtime/dsh')
+  vi.stubEnv('DSH_DESKTOP_PRIMARY_RUNTIME_DIR', '/runtime/primary-runtime')
+  vi.stubEnv('DSH_DESKTOP_HOST_INSPECT_PORT', undefined)
+  vi.stubEnv('DSH_DESKTOP_OPEN_DEVTOOLS', '0')
+  vi.stubEnv('DSH_DESKTOP_MANDATORY_UPDATE_CONFIG', undefined)
+  vi.stubEnv('DSH_DESKTOP_UPDATE_JOURNAL_DIR', undefined)
+  await import('../src/main.ts')
+  await vi.waitFor(() => { expect(state.showWorkspace).toHaveBeenCalledOnce() })
+  expect(state.beforeRead).not.toHaveBeenCalled()
+  expect(state.beforeWelcome).not.toHaveBeenCalled()
+  expect(state.accountState).not.toHaveBeenCalled()
+  expect(state.accountListener).toBeUndefined()
+  const { app } = await import('electron')
+  expect(app.setName).toHaveBeenCalledWith('Fixture Restaurant')
+  expect(app.setAboutPanelOptions).toHaveBeenCalledWith(expect.objectContaining({ applicationName: 'Fixture Restaurant' }))
+  expect(app.setAsDefaultProtocolClient).toHaveBeenCalledWith('fixture-restaurant')
+  const calls = vi.mocked(state.menu).mock.calls.flatMap(call => call[0] as { submenu?: { label?: string }[] }[])
+  const labels = calls.flatMap(item => item.submenu?.map(child => child.label) ?? [])
+  expect(labels.some(label => label?.includes('Manage dsh'))).toBe(false)
 })
 
 it.each([false, true])('starts welcome onboarding without carrying update focus into login or skip (Windows update=%s)', async (updated) => {

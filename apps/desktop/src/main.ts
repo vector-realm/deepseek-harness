@@ -71,6 +71,12 @@ import { DesktopUpdateOverlays } from './update-overlay.ts'
 import { DesktopQuitConfirmation } from './quit-confirmation.ts'
 import { DesktopTray } from './tray.ts'
 import { DesktopBackgroundNotice } from './background-notice.ts'
+import { desktopBrand } from './brand.ts'
+
+const brand = desktopBrand()
+const managed = process.env.DSH_CANYIN_MANAGED === '1'
+if (brand.name !== undefined) app.setName(brand.name)
+if (brand.appId !== undefined && process.platform === 'win32') app.setAppUserModelId(brand.appId)
 
 let focusPrimaryWindow = (): void => {}
 let stopForRecovery = async (): Promise<void> => { await stopOperationReports() }
@@ -497,7 +503,7 @@ async function main(): Promise<void> {
   const track = async <K extends keyof ProductEventMap>(eventName: K, attributes: ProductEventMap[K]): Promise<void> => {
     const event = { eventName, attributes, timestamp: Date.now() } as ProductEvent
     try {
-      if (analyticsEnabled) await welcomeBackend?.report(event)
+      if (!managed && analyticsEnabled) await welcomeBackend?.report(event)
     } catch (_error) { /* Analytics cannot interrupt native actions. */ }
   }
   let stopAccount: (() => void) | undefined
@@ -552,6 +558,8 @@ async function main(): Promise<void> {
           .catch((error: unknown) => { console.error('desktop: legacy Host cookie cleanup failed', error) })
         if (ready.injections === undefined) throw new Error('Desktop Host did not provide boot injections')
         injections = ready.injections
+        // The downstream business client owns device activation; it must not need the official account service.
+        if (managed) return
         welcomeBackend = connectDesktopWelcome(ready.url, cookie)
         analyticsEnabled = await welcomeBackend.analyticsEnabled().catch(() => false)
         if (!reportedLaunch) { reportedLaunch = true; void track('desktop_app_launch', {}) }
@@ -775,6 +783,7 @@ async function main(): Promise<void> {
   const updateSchedule = new DesktopUpdateSchedule(updates, resolveDesktopUpdateScheduleConfig(process.env))
 
   const downloadUpdate = async (version: string, revision = updates.revision): Promise<DesktopUpdateState> => {
+    if (managed) return updates.state
     void track('desktop_upgrade_click', {})
     updateJournal?.action('download-requested')
     const state = await updates.download(version, revision)
@@ -869,6 +878,7 @@ async function main(): Promise<void> {
   })
   ipcMain.handle(PLATFORM_IPC.open, (event, page: unknown, bounds: unknown) => {
     const owner = assertMainApplication(event)
+    if (managed) throw new Error('desktop managed: official account pages are disabled')
     if (page !== 'usage' && page !== 'top-up') throw new Error('Invalid Platform page')
     return platformView.open(owner, page, platformBounds(bounds))
   })
@@ -890,6 +900,7 @@ async function main(): Promise<void> {
       || new URL(event.senderFrame.url).origin !== new URL(applicationUrl).origin) {
       throw new Error('desktop welcome: rejected locale request from an unowned frame')
     }
+    if (managed) return { languages: systemLanguages, preference: null }
     if (welcomeBackend === undefined) throw new Error('desktop welcome: backend unavailable')
     return { languages: systemLanguages, preference: await welcomeBackend.readLocalePreference() }
   })
@@ -945,6 +956,7 @@ async function main(): Promise<void> {
   })
   ipcMain.handle(DESKTOP_IPC.onboardingApiKey, async (event) => {
     assertProductSender(event)
+    if (managed) return false
     return (await readWelcomeState()).hasApiKey
   })
   ipcMain.on(DESKTOP_IPC.onboardingActive, (event, active: unknown) => {
@@ -1006,6 +1018,7 @@ async function main(): Promise<void> {
   let policyAuthenticationQueued = false
   /** Present check results only while their captured channel revision remains current. */
   const openUpdatePrompt = (manual = false): Promise<void> => {
+    if (managed) return Promise.resolve()
     if (channelState?.error !== undefined) {
       return showConfigurationError()
     }
@@ -1145,6 +1158,7 @@ async function main(): Promise<void> {
   }
 
   const automaticCheck = (): void => {
+    if (managed) return
     if (!quitting) void mandatoryPolicy?.check('foreground-or-resume').catch((error: unknown) => { console.error(error) })
     if (!quitting) void updateSchedule.check().catch((error: unknown) => { console.error(error) })
   }
@@ -1155,10 +1169,12 @@ async function main(): Promise<void> {
     updates.dispose()
   })
 
-  const applicationIconPath = development ? join(app.getAppPath(), 'resources', 'icon-windows.png')
-    : join(process.resourcesPath, 'icon.png')
+  const applicationIconPath = process.env.DSH_CLIENT_BRAND_LOGO_URL
+    ? join(app.getAppPath(), 'lib', 'brand.png')
+    : development ? join(app.getAppPath(), 'resources', 'icon-windows.png') : join(process.resourcesPath, 'icon.png')
+  if (process.env.DSH_CLIENT_BRAND_LOGO_URL) app.dock?.setIcon(applicationIconPath)
   app.setAboutPanelOptions({
-    applicationName: 'DeepSeek Harness',
+    applicationName: brand.name ?? 'DeepSeek Harness',
     applicationVersion: app.getVersion(),
     // The release has no separate build number; omit Electron's bundle version.
     version: '',
@@ -1208,8 +1224,8 @@ async function main(): Promise<void> {
         click: () => { void showAbout().catch((error: unknown) => { console.error(error) }) } }
       : { label: currentDesktopLocale().messages.aboutMenu, role: 'about' },
     { type: 'separator' },
-    { label: currentDesktopLocale().messages.checkUpdatesMenu, click: () => { void openUpdatePrompt(true) } },
-    ...process.platform === 'darwin' || process.platform === 'win32'
+    ...!managed ? [{ label: currentDesktopLocale().messages.checkUpdatesMenu, click: () => { void openUpdatePrompt(true) } }] : [],
+    ...!managed && (process.platform === 'darwin' || process.platform === 'win32')
       ? [{ label: currentDesktopLocale().messages.cliCommandMenu, click: () => { void commandManager.show() } }] : [],
     { type: 'separator' },
     ...development ? [
@@ -1240,7 +1256,8 @@ async function main(): Promise<void> {
     tray?.relabel()
   }
   refreshApplicationMenu()
-  const trayIconPath = development ? join(app.getAppPath(), 'resources', 'tray-windows.ico') : join(process.resourcesPath, 'tray.ico')
+  const trayIconPath = process.env.DSH_CLIENT_BRAND_LOGO_URL ? applicationIconPath
+    : development ? join(app.getAppPath(), 'resources', 'tray-windows.ico') : join(process.resourcesPath, 'tray.ico')
   if (process.platform === 'win32') {
     // The tray is the way back to a hidden window; without it, relaunching the application still focuses it.
     try {
@@ -1262,7 +1279,7 @@ async function main(): Promise<void> {
     focus: () => { if (process.platform === 'darwin') app.focus({ steal: true }) },
     // The task dialog draws its main icon at the system icon size; the multi-size ICO yields that
     // size directly, where the 1024 px PNG would be scaled down by GDI.
-    ...(process.platform === 'win32' ? { icon: nativeImage.createFromPath(trayIconPath) } : {}),
+    ...(process.platform === 'win32' || process.env.DSH_CLIENT_BRAND_LOGO_URL ? { icon: nativeImage.createFromPath(trayIconPath) } : {}),
   })
 
   if (process.platform === 'win32') {
@@ -1454,6 +1471,7 @@ async function main(): Promise<void> {
   }
   const openInitialWindow = async (): Promise<void> => {
     if (quitting || recovery.active) return
+    if (managed) { await enterWorkspace(); return }
     const state = await readWelcomeState()
     if (isQuitting() || backend.state.phase !== 'ready') return
     nativeTheme.themeSource = state.themePreference
@@ -1485,10 +1503,10 @@ async function main(): Promise<void> {
     window.focus()
   }
 
-  if (app.isPackaged || process.env.DSH_DESKTOP_DEV_APP === '1') app.setAsDefaultProtocolClient('dsh')
+  if (app.isPackaged || process.env.DSH_DESKTOP_DEV_APP === '1') app.setAsDefaultProtocolClient(brand.protocol)
   app.on('open-url', (event, url) => {
     event.preventDefault()
-    if (url === 'dsh://open' || url === 'dsh://open/') focusPrimaryWindow()
+    if (url === `${brand.protocol}://open` || url === `${brand.protocol}://open/`) focusPrimaryWindow()
   })
 
   app.on('activate', (_event, hasVisibleWindows) => {
@@ -1551,7 +1569,7 @@ async function main(): Promise<void> {
   const policyInput: unknown = app.isPackaged
     ? ('dshMandatoryUpdatePolicy' in manifest ? manifest.dshMandatoryUpdatePolicy : undefined)
     : developmentPolicy === undefined ? undefined : JSON.parse(developmentPolicy) as unknown
-  const policyConfig = resolveDesktopPolicyConfig(policyInput, !app.isPackaged)
+  const policyConfig = managed ? undefined : resolveDesktopPolicyConfig(policyInput, !app.isPackaged)
   if (policyConfig !== undefined) {
     if (policyConfig.authentication === 'feishu-test') {
       policyAuth = new DesktopPolicyTestAuth(policyConfig.origin, policyConfig.allowedAuthOrigins, locale,
