@@ -511,3 +511,21 @@ describe('sidebar entry click analytics', () => {
     expect(layout.selectPanel).not.toHaveBeenCalled()
   })
 })
+
+it('applies downstream schedule copy and separates business and settings entries', async () => {
+  vi.stubEnv('DSH_CLIENT_MENU_SCHEDULES', '定时任务')
+  vi.stubEnv('DSH_CLIENT_MENU_SEPARATOR_BEFORE', 'platform-accounts')
+  try {
+    const { runtime, view } = await bench()
+    await mountPanel(runtime, { id: 'schedules' as MainPanelId, heading: 'Schedule', label: '自动化任务', order: 10 })
+    await mountPanel(runtime, { id: 'report' as MainPanelId, heading: 'Report', label: '经营日报', order: -40 })
+    await mountPanel(runtime, { id: 'platform-accounts' as MainPanelId, heading: 'Accounts', label: '平台账号', order: 100 })
+    const nav = await view.findByRole('navigation')
+    expect(within(nav).getAllByRole('button').map(button => button.getAttribute('aria-label')))
+      .toEqual(['经营日报', '平台账号', '定时任务'])
+    const separator = within(nav).getByRole('separator')
+    expect(separator.nextElementSibling?.querySelector('button')?.getAttribute('aria-label')).toBe('平台账号')
+  } finally {
+    vi.unstubAllEnvs()
+  }
+})

@@ -18,7 +18,7 @@
  * scrollbar indirection away while it is elsewhere, so a list the user is not
  * pointing at carries no bar.
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
   FishLogo, IconAppsAddOutlineRegular, IconNewChatOutlineMedium, IconNewChatOutlineRegular,
@@ -417,20 +417,23 @@ export function SidebarRoot({
           {panels.length > 0 && (
             <nav className={css.panelList} aria-label={t('panels.label')}>
               {panels.filter(({ id }) => id === FIXED_PANEL_ID || !hasEntryActions || !unpinned.includes(id)).map(({ id, label }) => (
-                <PanelRow
-                  key={id}
-                  id={id}
-                  label={label}
-                  wide={wide}
-                  unpinLabel={t('panels.unpin', { name: label })}
-                  unpinTooltip={t('panels.unpinTooltip')}
-                  canUnpin={hasEntryActions && id !== FIXED_PANEL_ID}
-                  setPinned={setPinned}
-                  usePanelInfo={usePanelInfo}
-                  selectPanel={selectPanel}
-                  trackEntryClick={trackEntryClick}
-                  renderFactorySlot={renderFactorySlot}
-                />
+                <Fragment key={id}>
+                  {id === process.env.DSH_CLIENT_MENU_SEPARATOR_BEFORE
+                    && <div className={css.panelSeparator} role="separator" />}
+                  <PanelRow
+                    id={id}
+                    label={label}
+                    wide={wide}
+                    unpinLabel={t('panels.unpin', { name: label })}
+                    unpinTooltip={t('panels.unpinTooltip')}
+                    canUnpin={hasEntryActions && id !== FIXED_PANEL_ID}
+                    setPinned={setPinned}
+                    usePanelInfo={usePanelInfo}
+                    selectPanel={selectPanel}
+                    trackEntryClick={trackEntryClick}
+                    renderFactorySlot={renderFactorySlot}
+                  />
+                </Fragment>
               ))}
               {hasEntryActions && (
                 <PanelMoreMenu

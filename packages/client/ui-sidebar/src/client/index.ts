@@ -58,6 +58,10 @@ export function apply(ctx: ClientContext): void {
     const next = ctx.slots.entriesOfSlot('sidebar.panellist').map(({ options }) => {
       // The list registration requires an id; StoredEntry erases the slot kind.
       const id = options.id as MainPanelId
+      const scheduleLabel = process.env.DSH_CLIENT_MENU_SCHEDULES
+      if (id === 'schedules' && scheduleLabel) {
+        return { id, order: 105, label: scheduleLabel }
+      }
       return { id, order: options.order ?? 0, label: resolveSlotLabel(options.label) ?? id }
     }).sort((a, b) => a.order - b.order)
     const previous = panels.getSnapshot()

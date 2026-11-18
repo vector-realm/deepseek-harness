@@ -4,8 +4,8 @@
 export const zh = {
   'panels.unpinTooltip': '从左侧栏取消固定',
   'panels.unpin': '从侧边栏取消固定{name}',
-  'session.new': process.env.DSH_CLIENT_BRAND_NAME ? '对话' : '新会话',
-  'session.new.label': process.env.DSH_CLIENT_BRAND_NAME ? '对话' : '新建会话',
+  'session.new': process.env.DSH_CLIENT_MENU_ASK || (process.env.DSH_CLIENT_BRAND_NAME ? '对话' : '新会话'),
+  'session.new.label': process.env.DSH_CLIENT_MENU_ASK || (process.env.DSH_CLIENT_BRAND_NAME ? '对话' : '新建会话'),
   'toggle.open': '打开侧边栏',
   'toggle.collapse': '收起侧边栏',
   'panels.label': '全局面板',
@@ -21,8 +21,8 @@ export type SidebarKey = keyof typeof zh
 export const en = {
   'panels.unpinTooltip': 'Unpin from left sidebar',
   'panels.unpin': 'Unpin {name} from sidebar',
-  'session.new': 'New Session',
-  'session.new.label': 'New session',
+  'session.new': process.env.DSH_CLIENT_MENU_ASK || 'New Session',
+  'session.new.label': process.env.DSH_CLIENT_MENU_ASK || 'New session',
   'toggle.open': 'Open sidebar',
   'toggle.collapse': 'Collapse sidebar',
   'panels.label': 'Global panels',

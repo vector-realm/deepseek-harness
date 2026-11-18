@@ -710,6 +710,11 @@
   margin-bottom: 8px;
 }
 
+.panelSeparator {
+  border-top: 1px solid var(--dsw-alias-border-l3);
+  margin: 7px 10px;
+}
+
 /* Panel entries use a 3px paint inset, the New Session bar's 12px radius,
    the session rows' hover/selected fill, and the primary ink. */
 .panelRow {
