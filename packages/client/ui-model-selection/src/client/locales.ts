@@ -18,10 +18,10 @@ export const zh = {
   'trigger.loading': '正在加载模型…',
   'trigger.selectAria': '请选择模型',
   'trigger.aria': '选择模型，当前 {model}',
-  'trigger.ariaEffort': '选择模型，当前 {model}，推理等级 {effort}',
-  'menu.aria': '模型与推理等级',
+  'trigger.ariaEffort': '选择模型，当前 {model}，思考程度 {effort}',
+  'menu.aria': '模型与思考程度',
   'menu.model': '模型',
-  'menu.effort': '推理等级',
+  'menu.effort': '思考程度',
   'effort.providerDefault': 'Default',
   'status.loading': '正在刷新模型列表…',
   'error.action': '模型操作失败：{message}',
@@ -32,7 +32,7 @@ export const zh = {
   'search.clear': '清除搜索',
   'search.empty': '没有匹配的模型。',
   'empty.models': '暂无可用模型',
-  'empty.efforts': '当前模型未提供推理等级。',
+  'empty.efforts': '当前模型未提供思考程度。',
 } satisfies Record<string, string>
 
 /** The model namespace key union. */

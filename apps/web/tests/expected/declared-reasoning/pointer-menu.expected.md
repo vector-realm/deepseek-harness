@@ -1,4 +1,4 @@
-- group "模型与推理等级":
+- group "模型与思考程度":
   - searchbox "搜索模型…"
   - menu "模型":
     - group "DeepSeek":

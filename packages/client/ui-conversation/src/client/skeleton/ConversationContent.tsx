@@ -21,7 +21,7 @@ function NoConversationWidthControls() {
  */
 export function ConversationContent(props: ConversationContentProps) {
   const {
-    sessionId, phase, hero, useSession, useSessions, useSessionStatus,
+    sessionId, phase, hero, composerPlaceholder, useSession, useSessions, useSessionStatus,
     useWorkspaces, useInput, useComposerBlock, renderSlot, renderSlotChain,
     selectWorkspace, t, useFactorySlot,
   } = props
@@ -159,7 +159,9 @@ export function ConversationContent(props: ConversationContentProps) {
         // block keeps the model seat live because choosing a model is how the
         // user clears it.
         ? { blocked: composerBlock, placeholder: composerBlock.reason }
-        : hero ? { placeholder: process.env.DSH_CLIENT_COMPOSER_PLACEHOLDER || t('placeholder.hero') } : {}),
+        : phase === 'active' && composerPlaceholder !== undefined
+          ? { placeholder: composerPlaceholder }
+          : hero ? { placeholder: process.env.DSH_CLIENT_COMPOSER_PLACEHOLDER || t('placeholder.hero') } : {}),
   })
 
   const composerBar = (

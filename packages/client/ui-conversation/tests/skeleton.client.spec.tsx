@@ -138,6 +138,8 @@ function mount(
     summaryOrigin?: 'subagent'
     /** Insert a first-level subagent between the root and selected child. */
     nestedSubagent?: boolean
+    /** Optional placeholder supplied by the occurrence. */
+    composerPlaceholder?: string
     /** A composer block another plugin raised for this session. */
     composerBlock?: { reason: string }
     /** Mutable view ledger used by registration-order regressions. */
@@ -383,9 +385,13 @@ function mount(
     const useFactorySlot = ((name: string, fallback: (props: never) => ReactNode) => (
       name === 'views' ? StableConversationViews : factoryOptions?.slots?.[name] ?? fallback
     )) as ConversationContentProps['useFactorySlot']
+    const { composerPlaceholder } = options
     return (
       <FactoryViewsTestContext.Provider value={common}>
-        <ConversationContent {...({ ...common, ...runtimeProps, ...input, useFactorySlot })} />
+        <ConversationContent
+          {...common} {...runtimeProps} {...input} useFactorySlot={useFactorySlot}
+          {...(composerPlaceholder === undefined ? {} : { composerPlaceholder })}
+        />
       </FactoryViewsTestContext.Provider>
     )
   }) as ConversationSlotProps['renderFactorySlot']
@@ -481,9 +487,19 @@ describe('ConversationRoot resident composer', () => {
     expect(dispatchCount()).toBe(before)
   })
 
+  it('uses an occurrence-supplied placeholder for an active composer', () => {
+    const b = mount(sessionSnapshotOf(), undefined, undefined, {
+      composerPlaceholder: 'Describe a video edit',
+    })
+    const box = b.view.getByRole('textbox')
+    expect(box.getAttribute('contenteditable')).toBe('true')
+    expect(box.getAttribute('data-placeholder')).toBe('Describe a video edit')
+  })
+
   it('renders the composer inert with the blocker\u2019s own reason', () => {
     const b = mount(sessionSnapshotOf(), undefined, undefined, {
       composerBlock: { reason: 'select a model first' },
+      composerPlaceholder: 'Describe a video edit',
     })
     const box = b.view.getByRole('textbox')
     // One disabled composer with the blocker's placeholder, never a second
@@ -507,12 +523,13 @@ describe('ConversationRoot resident composer', () => {
     const b = mount(sessionSnapshotOf({ blank: true }), [], undefined, {
       summaryBlank: true,
       composerBlock: { reason: 'select a model first' },
+      composerPlaceholder: 'Describe a video edit',
     })
     const box = b.view.getByRole('textbox')
     expect(box.getAttribute('aria-disabled')).not.toBe('true')
     expect(box.getAttribute('contenteditable')).not.toBe('true')
     expect(box.getAttribute('aria-haspopup')).toBe('menu')
-    expect(box.getAttribute('data-placeholder')).not.toBe('select a model first')
+    expect(box.getAttribute('data-placeholder')).toBe('选择一个工作区开始')
     const modelSeat = b.seatOwners.filter(call => call.key === 'conversation.input.model').at(-1)?.owner
     expect(modelSeat).toEqual({ locked: true })
   })

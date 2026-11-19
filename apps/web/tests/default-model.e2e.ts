@@ -130,7 +130,7 @@ describe('web e2e: the composer model switch is the default for later sessions',
       await page.setViewportSize({ width: 390, height: 844 })
       await trigger.click()
       if (pane === 'model') await page.getByRole('menuitem', { name: /^模型/ }).click()
-      const surface = page.getByRole(pane === 'model' ? 'group' : 'menu', { name: '模型与推理等级', exact: true })
+      const surface = page.getByRole(pane === 'model' ? 'group' : 'menu', { name: '模型与思考程度', exact: true })
       const label = surface.locator('[data-provider-id="origin-gateway"][data-model-id="origin-large"]')
       await label.waitFor()
       const original = await surface.boundingBox()
@@ -327,7 +327,7 @@ describe('web e2e: the composer model switch is the default for later sessions',
     try {
       await page.getByRole('button', { name: /^选择模型/ }).click()
       await page.getByRole('menuitem', { name: /^模型/ }).click()
-      const menu = page.getByRole('group', { name: '模型与推理等级', exact: true })
+      const menu = page.getByRole('group', { name: '模型与思考程度', exact: true })
       const menuSearch = page.getByRole('searchbox', { name: '搜索模型…' })
       const order = await readGroups(menu, 'menuitemradio')
       const sticky = await checkSticky(menu, menu.getByRole('menu', { name: '模型', exact: true }))
@@ -405,7 +405,7 @@ describe('web e2e: the composer model switch is the default for later sessions',
       platform: document.documentElement.getAttribute('data-platform'),
       theme: document.body.getAttribute('data-ds-dark-theme'),
     }))
-    const surface = page.getByRole('group', { name: '模型与推理等级', exact: true })
+    const surface = page.getByRole('group', { name: '模型与思考程度', exact: true })
     const trigger = page.getByRole('button', { name: /^选择模型/ })
     const search = page.getByRole('searchbox', { name: '搜索模型…' })
     try {
@@ -489,7 +489,7 @@ describe('web e2e: the composer model switch is the default for later sessions',
     await trigger.waitFor({ timeout: 15_000 })
     expect(await trigger.evaluate(element => getComputedStyle(element).fontWeight)).toBe('400')
     await trigger.click()
-    const modelMenuBounds = await page.getByRole('menu', { name: '模型与推理等级', exact: true }).boundingBox()
+    const modelMenuBounds = await page.getByRole('menu', { name: '模型与思考程度', exact: true }).boundingBox()
     const composerBounds = await page.locator('[data-composer-card]').first().boundingBox()
     expect(modelMenuBounds!.width).toBeLessThan(composerBounds!.width)
     const modelCell = page.getByRole('menuitem', { name: /模型/ })
@@ -541,7 +541,7 @@ describe('web e2e: the composer model switch is the default for later sessions',
       getComputedStyle(row.querySelector('span span')!).fontWeight,
     ))
     expect(new Set(modelWeights)).toEqual(new Set(['400']))
-    const headingPalettes = await page.getByRole('group', { name: '模型与推理等级', exact: true }).evaluate((menu) => {
+    const headingPalettes = await page.getByRole('group', { name: '模型与思考程度', exact: true }).evaluate((menu) => {
       const html = menu.ownerDocument.documentElement
       const body = menu.ownerDocument.body
       const previousPlatform = html.getAttribute('data-platform')
@@ -589,7 +589,7 @@ describe('web e2e: the composer model switch is the default for later sessions',
     expect(await page.getByRole('group', { name: 'Origin Gateway', exact: true }).count()).toBe(0)
     await compareOrRefreshGolden(
       fileURLToPath(new URL('./expected/default-model/search.expected.md', import.meta.url)),
-      await captureStableAria(page, '[role="group"][aria-label="模型与推理等级"]', scaffold.workspaceCwd),
+      await captureStableAria(page, '[role="group"][aria-label="模型与思考程度"]', scaffold.workspaceCwd),
       webSnapshotMode(),
     )
     const entered = Promise.withResolvers<undefined>()

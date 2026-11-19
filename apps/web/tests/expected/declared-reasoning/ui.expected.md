@@ -1,4 +1,4 @@
-- menu "模型与推理等级":
+- menu "模型与思考程度":
   - menuitemradio "Default" [checked]
   - menuitemradio "Off"
   - menuitemradio "High"
