@@ -123,16 +123,18 @@ export function draftTarget(draft: TaskEditorDraft, original?: ScheduleCatalogEn
 
 /**
  * Render manual creation and inline edits with the existing task rule controls.
+ * @param props.fixedTarget - replace target inputs with a read-only description of the Host policy.
  * @param props.disabled - whether the fields reject input.
  * @param props.held - whether a disabled state keeps the enabled look because it lasts only one brief request.
  */
-export function TaskEditorFields({ draft, onChange, projects, disabled, held, original, t }: {
+export function TaskEditorFields({ draft, onChange, projects, disabled, held, original, fixedTarget, t }: {
   readonly draft: TaskEditorDraft
   readonly onChange: (draft: TaskEditorDraft) => void
   readonly projects: ProjectChoices
   readonly disabled: boolean
   readonly held: boolean
   readonly original?: ScheduleCatalogEntry | undefined
+  readonly fixedTarget?: boolean
   readonly t: PropsLocale<'schedule.manager'>['t']
 }): ReactNode {
   const [dateOpen, setDateOpen] = useState(false)
@@ -172,7 +174,10 @@ export function TaskEditorFields({ draft, onChange, projects, disabled, held, or
       onChange={(event) => { change({ title: event.target.value }) }} /></label>
     <label className={css.editorField}>{t('detail.instruction')}<textarea className={css.instruction} aria-required placeholder={t('detail.instructionPlaceholder')}
       value={draft.prompt} onChange={(event) => { change({ prompt: event.target.value }) }} /></label>
-    <div className={css.ruleRows}>
+    <div className={css.ruleRows}>{fixedTarget ? <div className={css.ruleRow}>
+      <span className={css.ruleLabel}>{t('host.target')}</span>
+      <span>{t('host.targetNewHelp')}</span>
+    </div> : <>
       <RuleSelectRow label={t('host.target')} value={draft.target} current={targetLabel(draft.target)} disabled={disabled}
         listClassName={css.targetMenu} items={[
           ...(currentSessionId === '' ? [] : [{ id: 'session', label: targetLabel('session') }]),
@@ -188,7 +193,7 @@ export function TaskEditorFields({ draft, onChange, projects, disabled, held, or
         current={projects.items.find(choice => choice.value === draft.cwd)?.label ?? (draft.cwd || t('host.ungrouped'))}
         listClassName={css.workspaceMenu} items={workspaceItems.length === 0 ? [{ id: '', label: t('host.ungrouped'), disabled: true }]
           : workspaceItems} onChange={(cwd) => { change({ cwd }) }} />}
-    </div>
+    </>}</div>
     <section className={css.editorField} aria-label={t('rule.title')}><h3>{t('rule.title')}</h3><div className={css.ruleRows}>
       <RuleSelectRow label={t('rule.repeat')} value={frequencyValue} disabled={disabled} items={frequencyItems}
         current={(frequencyItems.find(item => item.id === frequencyValue) as { label: string }).label} onChange={(value) => {

@@ -131,6 +131,52 @@ afterEach(() => {
   }
 })
 
+it('renders deployment actions on the native page and presents a managed rule without mutation controls', () => {
+  const managed = { ...fresh, target: { kind: 'new', create: { agentPreset: 'system-tasks' } } } as const
+  const renderSlot: NonNullable<TaskManagerPageProps['renderSlot']> = name =>
+    name === 'schedule.manager.header' ? <button type="button">Run history</button> : <span>Deployment metadata</span>
+  const { props } = mount({ records: [managed] }, en, {
+    fixedUserTarget: () => true,
+    isManagedTask: task => task.id === managed.id,
+    renderSlot,
+  })
+  expect(screen.getByRole('button', { name: 'Run history' })).toBeTruthy()
+  expect(screen.getByText('Deployment metadata')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: managed.title }))
+  expect(screen.getAllByText('Deployment metadata')).toHaveLength(2)
+  expect(screen.queryByRole('button', { name: en['host.pause'] })).toBeNull()
+  expect(screen.queryByRole('button', { name: en['detail.more'] })).toBeNull()
+  expect(screen.queryByRole('button', { name: en['rule.save'] })).toBeNull()
+  expect(screen.queryByDisplayValue(managed.prompt)).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: en['new.action'] }))
+  expect(screen.getByRole('heading', { name: en['host.manualCreate'] })).toBeTruthy()
+  expect(props.onNewTask).not.toHaveBeenCalled()
+})
+
+it('presents the configured execution target as read-only while creating and editing native tasks', async () => {
+  const { props } = mount({ records: [fresh] }, en, { fixedUserTarget: () => true })
+  const assertReadOnlyTarget = (): void => {
+    expect(screen.queryByRole('button', { name: en['host.target'] })).toBeNull()
+    expect(screen.queryByRole('button', { name: en['host.project'] })).toBeNull()
+    expect(screen.getByText(en['host.targetNewHelp'])).toBeTruthy()
+    expect(screen.getByRole('textbox', { name: en['detail.instruction'] }).hasAttribute('disabled')).toBe(false)
+  }
+  fireEvent.click(screen.getByRole('button', { name: fresh.title }))
+  assertReadOnlyTarget()
+  fireEvent.change(screen.getByRole('textbox', { name: en['detail.name'] }), { target: { value: 'Edited summary' } })
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: en['rule.save'] })) })
+  expect(props.hostActions.edit).toHaveBeenCalledWith({
+    id: fresh.id, action: 'update', expectedUpdatedAt: fresh.updatedAt,
+    patch: { title: 'Edited summary', target: { kind: 'new' } },
+  })
+  fireEvent.click(screen.getByRole('button', { name: en['new.action'] }))
+  assertReadOnlyTarget()
+  fireEvent.change(screen.getByRole('textbox', { name: en['detail.name'] }), { target: { value: 'New summary' } })
+  fireEvent.change(screen.getByRole('textbox', { name: en['detail.instruction'] }), { target: { value: 'Read the approved data' } })
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: en['host.create'] })) })
+  expect(props.onCreateTask).toHaveBeenCalledWith(expect.objectContaining({ target: { kind: 'new' } }))
+})
+
 /** Device zone the cases pin. */
 const DEVICE_ZONE = 'Asia/Shanghai'
 /** Reference instant for static schedule assertions; timers retain their real scheduling. */

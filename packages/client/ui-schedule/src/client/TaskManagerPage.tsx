@@ -6,7 +6,7 @@ import {
   IconSearchOutlineRegular, IconTrashOutlineRegular, IconChevronDownOutlineRegular, IconEditOutlineRegular,
   Input, Menu, MenuItemButton, Modal, ReferenceIconRegular, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { HostObservable, InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { HostObservable, InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { ScheduleId, ScheduleCatalogEntry, ScheduleCreateRequest } from '@deepseek-ai/dsh-schedule/client'
 import type { TaskCreateOutcome } from './TaskDetail.tsx'
@@ -21,6 +21,23 @@ import { formatScheduleFrequency, nextRunParts, taskName, zoneLabel } from './sc
 import type { FrequencyZone } from './schedule-format.ts'
 import { ScheduleEmptyIllustration } from './ScheduleEmptyIllustration.tsx'
 import css from './TaskManagerPage.module.css'
+
+/** Context given to task metadata contributed by a deployment. */
+export type TaskMetadata =
+  | { readonly placement: 'row' | 'managed'; readonly task: ScheduleCatalogEntry }
+  | { readonly placement: 'editor'; readonly task?: ScheduleCatalogEntry | undefined }
+
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface SlotMap {
+    'schedule.manager.header': { kind: 'list'; scope: 'root' }
+    'schedule.manager.metadata': { kind: 'list'; scope: 'root'; owner: TaskMetadata }
+  }
+}
+
+export const taskManagerSlots = {
+  'schedule.manager.header': { kind: 'list', scope: 'root' },
+  'schedule.manager.metadata': { kind: 'list', scope: 'root' },
+} as const
 
 /** Injected catalog and task actions for the management page. */
 export interface TaskManagerInjected extends TaskDetailInjected {
@@ -49,6 +66,7 @@ export interface TaskManagerInjected extends TaskDetailInjected {
 export type TaskManagerPageProps = PropsRuntime<'main'>
   & InjectFace<TaskManagerInjected>
   & TaskEditorStoreProps
+  & Partial<PropsRenderSlots<keyof typeof taskManagerSlots>>
   & PropsLocale<'schedule.manager'>
 
 type StatusFilter = 'all' | ScheduleCatalogEntry['status']
@@ -59,7 +77,7 @@ type StatusFilter = 'all' | ScheduleCatalogEntry['status']
  * @returns the searchable task list beside the selected task's detail.
  */
 export function TaskManagerPage(props: TaskManagerPageProps) {
-  const { useCatalog, onNewTask, onClearEnded, onRetry, onCreateTask, t } = props
+  const { useCatalog, onNewTask, onClearEnded, onRetry, onCreateTask, t, renderSlot, isManagedTask, fixedUserTarget } = props
   const [createMenuOpen, setCreateMenuOpen] = useState(false)
   const [manualOpen, setManualOpen] = useState(false)
   const catalog = useCatalog(snapshot => snapshot)
@@ -91,8 +109,8 @@ export function TaskManagerPage(props: TaskManagerPageProps) {
   // The bulk action's target and count come from the complete catalog, not from
   // the filtered rows: it removes every ended task, whatever the view shows.
   const endedCount = useMemo(
-    () => records.filter(record => record.status === 'ended').length,
-    [records],
+    () => records.filter(record => record.status === 'ended' && !isManagedTask?.(record)).length,
+    [records, isManagedTask],
   )
   const rowIndex = useMemo(() => new TextSearchIndex(
     records.filter(record => statusFilter === 'all' || record.status === statusFilter)
@@ -197,7 +215,11 @@ export function TaskManagerPage(props: TaskManagerPageProps) {
             <div className={css.pageHeading}>
               <h1 ref={headingRef} tabIndex={-1}>{t('title')}</h1>
               <div className={css.creationActions}>
-                <span className={css.createGroup} role="group" aria-label={t('host.create')}>
+                {renderSlot?.('schedule.manager.header', {})}
+                {fixedUserTarget?.() ? <Button variant="primary" size="sm" className={css.headerAction}
+                  icon={<IconPlusOutlineRegular size={13} />} onClick={(event) => { createManually(event.currentTarget) }}>
+                  {t('new.action')}
+                </Button> : <span className={css.createGroup} role="group" aria-label={t('host.create')}>
                   <Button variant="primary" size="sm" className={clsx(css.headerAction, css.createPrimary)} icon={<IconPlusOutlineRegular size={13} />}
                     onClick={onNewTask}>{t('new.action')}</Button>
                   <Menu open={createMenuOpen} onClose={() => { setCreateMenuOpen(false) }} align="end" portal autoFocus
@@ -213,7 +235,7 @@ export function TaskManagerPage(props: TaskManagerPageProps) {
                       {t('host.manualCreate')}
                     </MenuItemButton>
                   </Menu>
-                </span>
+                </span>}
               </div>
             </div>
             <div className={css.filters}>
@@ -323,6 +345,7 @@ export function TaskManagerPage(props: TaskManagerPageProps) {
                           </span>
                         </span>
                       </Button>
+                      {renderSlot?.('schedule.manager.metadata', { placement: 'row', task: record })}
                     </li>
                   )
                 })}
@@ -332,12 +355,15 @@ export function TaskManagerPage(props: TaskManagerPageProps) {
         </div>
       </div>
       {manualOpen ? <TaskDetail {...detail.props} onCreateTask={onCreateTask} onClose={closeDetails} onDeleted={closeDetails}
+        metadata={renderSlot?.('schedule.manager.metadata', { placement: 'editor' })}
         onCreated={(task) => {
           setManualOpen(false); setSearch(''); setStatusFilter('all'); setSelectedId(task.id); setTab('rule')
         }} /> : selected !== undefined && <TaskDetail
         {...detail.props}
         task={selected}
         authoritative={catalogRecord !== undefined}
+        metadata={renderSlot?.('schedule.manager.metadata',
+          { placement: isManagedTask?.(selected) === true ? 'managed' : 'editor', task: selected })}
         onDeleted={closeDetails}
         onClose={closeDetails}
       />}
