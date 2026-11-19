@@ -60,6 +60,8 @@ export interface TaskManagerInjected extends TaskDetailInjected {
   readonly onClearEnded: () => Promise<void>
   /** Create a task directly through the Host, without a model request. */
   readonly onCreateTask: (request: ScheduleCreateRequest) => Promise<TaskCreateOutcome>
+  /** Whether the Host has answered which task-creation methods are allowed. */
+  readonly creationPolicyReady?: () => boolean
 }
 
 /** Root-scoped task catalog props derived from the framework and injected actions. */
@@ -77,11 +79,13 @@ type StatusFilter = 'all' | ScheduleCatalogEntry['status']
  * @returns the searchable task list beside the selected task's detail.
  */
 export function TaskManagerPage(props: TaskManagerPageProps) {
-  const { useCatalog, onNewTask, onClearEnded, onRetry, onCreateTask, t, renderSlot, isManagedTask, fixedUserTarget } = props
+  const { useCatalog, onNewTask, onClearEnded, onRetry, onCreateTask, t, renderSlot, isManagedTask, fixedUserTarget,
+    creationPolicyReady } = props
   const [createMenuOpen, setCreateMenuOpen] = useState(false)
   const [manualOpen, setManualOpen] = useState(false)
   const catalog = useCatalog(snapshot => snapshot)
   const { records, status } = catalog
+  const mayCreate = creationPolicyReady?.() ?? true
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active')
   const [selectedId, setSelectedId] = useState<ScheduleId | null>(null)
@@ -216,26 +220,28 @@ export function TaskManagerPage(props: TaskManagerPageProps) {
               <h1 ref={headingRef} tabIndex={-1}>{t('title')}</h1>
               <div className={css.creationActions}>
                 {renderSlot?.('schedule.manager.header', {})}
-                {fixedUserTarget?.() ? <Button variant="primary" size="sm" className={css.headerAction}
-                  icon={<IconPlusOutlineRegular size={13} />} onClick={(event) => { createManually(event.currentTarget) }}>
-                  {t('new.action')}
-                </Button> : <span className={css.createGroup} role="group" aria-label={t('host.create')}>
-                  <Button variant="primary" size="sm" className={clsx(css.headerAction, css.createPrimary)} icon={<IconPlusOutlineRegular size={13} />}
-                    onClick={onNewTask}>{t('new.action')}</Button>
-                  <Menu open={createMenuOpen} onClose={() => { setCreateMenuOpen(false) }} align="end" portal autoFocus
-                    listClassName={css.createMenu}
-                    anchor={<Button ref={createTriggerRef} variant="primary" size="sm" className={css.createMore} aria-label={t('host.createMethod')}
-                      aria-haspopup="menu" aria-expanded={createMenuOpen} onClick={() => { setCreateMenuOpen(value => !value) }}>
-                      <IconChevronDownOutlineRegular size={12} />
-                    </Button>}>
-                    <MenuItemButton icon={<ReferenceIconRegular kind="session" size={14} />}
-                      onSelect={() => { setCreateMenuOpen(false); onNewTask() }}>{t('host.chatCreate')}</MenuItemButton>
-                    <MenuItemButton icon={<IconEditOutlineRegular size={14} />}
-                      onSelect={() => { setCreateMenuOpen(false); createManually(createTriggerRef.current) }}>
-                      {t('host.manualCreate')}
-                    </MenuItemButton>
-                  </Menu>
-                </span>}
+                {!mayCreate ? <Button variant="primary" size="sm" className={css.headerAction}
+                  icon={<IconPlusOutlineRegular size={13} />} disabled>{t('new.action')}</Button>
+                  : fixedUserTarget?.() ? <Button variant="primary" size="sm" className={css.headerAction}
+                    icon={<IconPlusOutlineRegular size={13} />} onClick={(event) => { createManually(event.currentTarget) }}>
+                    {t('new.action')}
+                  </Button> : <span className={css.createGroup} role="group" aria-label={t('host.create')}>
+                    <Button variant="primary" size="sm" className={clsx(css.headerAction, css.createPrimary)} icon={<IconPlusOutlineRegular size={13} />}
+                      onClick={onNewTask}>{t('new.action')}</Button>
+                    <Menu open={createMenuOpen} onClose={() => { setCreateMenuOpen(false) }} align="end" portal autoFocus
+                      listClassName={css.createMenu}
+                      anchor={<Button ref={createTriggerRef} variant="primary" size="sm" className={css.createMore} aria-label={t('host.createMethod')}
+                        aria-haspopup="menu" aria-expanded={createMenuOpen} onClick={() => { setCreateMenuOpen(value => !value) }}>
+                        <IconChevronDownOutlineRegular size={12} />
+                      </Button>}>
+                      <MenuItemButton icon={<ReferenceIconRegular kind="session" size={14} />}
+                        onSelect={() => { setCreateMenuOpen(false); onNewTask() }}>{t('host.chatCreate')}</MenuItemButton>
+                      <MenuItemButton icon={<IconEditOutlineRegular size={14} />}
+                        onSelect={() => { setCreateMenuOpen(false); createManually(createTriggerRef.current) }}>
+                        {t('host.manualCreate')}
+                      </MenuItemButton>
+                    </Menu>
+                  </span>}
               </div>
             </div>
             <div className={css.filters}>
@@ -303,7 +309,8 @@ export function TaskManagerPage(props: TaskManagerPageProps) {
               {status === 'ready' && rows.length === 0 && <div className={css.empty} role="status">
                 <ScheduleEmptyIllustration className={css.emptyIllustration} />
                 <h2>{t(emptyTitle)}</h2>
-                <Button variant="outline" className={css.emptyAction} onClick={(event) => { createManually(event.currentTarget) }}>
+                <Button variant="outline" className={css.emptyAction} disabled={!mayCreate}
+                  onClick={(event) => { createManually(event.currentTarget) }}>
                   {t('empty.action')}
                 </Button>
               </div>}

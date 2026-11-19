@@ -103,7 +103,10 @@ async function baseContext(
   // provide one: the second registration is rejected as a duplicate at <root>.
   new RemoteStub(ctx, remote.$on)
   await ctx.plugin({ apply(provider: Context) {
-    provider.provide('remote.schedule', (remote.schedule ?? {}) as never)
+    provider.provide('remote.schedule', {
+      deliveryLimits: async () => ({ ok: true, value: { newSessionIntervalSeconds: 300 } }),
+      ...remote.schedule,
+    } as never)
   } }).await()
   ctx.provide('uiWorkspace', { openSession: vi.fn(), startSession: vi.fn() } as never)
   ctx.provide('sidebarRightTabs', { register: sidebar.register } as never)
@@ -185,6 +188,25 @@ async function hostPage(schedule: object): Promise<HostPage> {
 }
 
 describe('ui-schedule browser half', () => {
+  it('reports a failed creation policy through the catalog retry and enables creation only after recovery', async () => {
+    const deliveryLimits = vi.fn()
+      .mockRejectedValueOnce(new Error('Disconnected'))
+      .mockResolvedValue({ ok: true, value: { newSessionIntervalSeconds: 300, fixedUserTarget: true } })
+    const { face, close } = await hostPage({
+      catalog: vi.fn().mockResolvedValue({ ok: true, value: [hostTask] }),
+      deliveryLimits,
+    })
+    try {
+      expect(face.hooks.catalog.getSnapshot().status).toBe('error')
+      expect(face.creationPolicyReady?.()).toBe(false)
+      await face.onRetry()
+      expect(face.hooks.catalog.getSnapshot().status).toBe('ready')
+      expect(face.creationPolicyReady?.()).toBe(true)
+      expect(face.fixedUserTarget?.()).toBe(true)
+      expect(deliveryLimits).toHaveBeenCalledTimes(2)
+    } finally { await close() }
+  })
+
   it('reads the configured delivery interval and contains Remote and transport failures', async () => {
     const deliveryLimits = vi.fn()
       .mockResolvedValueOnce({ ok: true, value: { newSessionIntervalSeconds: 7200 } })

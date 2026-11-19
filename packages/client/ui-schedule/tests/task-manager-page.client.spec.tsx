@@ -153,6 +153,27 @@ it('renders deployment actions on the native page and presents a managed rule wi
   expect(props.onNewTask).not.toHaveBeenCalled()
 })
 
+it('waits for the Host creation policy before exposing a native task creation action', () => {
+  let policyReady = false
+  const { props, update } = mount({ records: [] }, en, {
+    creationPolicyReady: () => policyReady,
+    fixedUserTarget: () => policyReady,
+  })
+  const header = screen.getByRole('button', { name: en['new.action'] })
+  expect(header.hasAttribute('disabled')).toBe(true)
+  expect(emptyNewTaskButton().hasAttribute('disabled')).toBe(true)
+  fireEvent.click(header)
+  fireEvent.click(emptyNewTaskButton())
+  expect(props.onNewTask).not.toHaveBeenCalled()
+  expect(screen.queryByRole('heading', { name: en['host.manualCreate'] })).toBeNull()
+
+  policyReady = true
+  update({ readSettled: 1 })
+  fireEvent.click(screen.getByRole('button', { name: en['new.action'] }))
+  expect(screen.getByRole('heading', { name: en['host.manualCreate'] })).toBeTruthy()
+  expect(props.onNewTask).not.toHaveBeenCalled()
+})
+
 it('presents the configured execution target as read-only while creating and editing native tasks', async () => {
   const { props } = mount({ records: [fresh] }, en, { fixedUserTarget: () => true })
   const assertReadOnlyTarget = (): void => {

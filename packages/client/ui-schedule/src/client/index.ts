@@ -149,9 +149,12 @@ export function apply(ctx: ClientContext): void {
       list: async () => {
         const [catalog, limits] = await Promise.all([
           ctx.remote.schedule.catalog(),
-          policy === undefined ? settle(() => ctx.remote.schedule.deliveryLimits()) : undefined,
+          policy === undefined ? ctx.remote.schedule.deliveryLimits() : undefined,
         ])
-        if (limits?.ok === true) policy = limits.value
+        if (limits !== undefined) {
+          if (!limits.ok) return limits
+          policy = limits.value
+        }
         return catalog
       },
       remove: async (id): Promise<RemoteResult<ScheduleDeleteResult>> => {
@@ -255,6 +258,7 @@ export function apply(ctx: ClientContext): void {
       store: createEditorStore(),
       inject: (): TaskManagerInjected => ({
         ...detail,
+        creationPolicyReady: () => policy !== undefined,
         onNewTask: () => { ctx.uiWorkspace.startSession(undefined, { prompt: t('host.createPrompt'), whenDraftExists: 'append' }) },
         onClearEnded: async () => {
           const outcome = await clearEnded()
