@@ -51,7 +51,7 @@ export const InputBar = memo(function InputBar({
   useAccess,
   useProjection, sessionId, variant, occurrence, disabled: inert = false, blocked,
   workspacePickerOpen = false, onRequestWorkspace,
-  placeholder, accessory,
+  placeholder, accessory, hideModel = false,
 }: InputBarProps) {
   const input = useInput(s => s)
   const notice = useNotices(s => s)
@@ -538,7 +538,7 @@ export const InputBar = memo(function InputBar({
               {input === undefined || sessionId === undefined
                 ? null
                 : renderSlot('conversation.input.right', {})}
-              {sessionId === undefined ? null : renderSlot('conversation.input.model', { locked: modelSeatLocked })}
+              {sessionId === undefined || hideModel ? null : renderSlot('conversation.input.model', { locked: modelSeatLocked })}
             </div>
             {input === undefined || sessionId === undefined ? null : <div className={activity ? css.activityExpanded : css.activity}>
               {renderSlot('conversation.input.activity', { locked, onActiveChange: setActivity })}

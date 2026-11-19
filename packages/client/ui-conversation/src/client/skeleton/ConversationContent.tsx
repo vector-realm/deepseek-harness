@@ -147,6 +147,7 @@ export function ConversationContent(props: ConversationContentProps) {
   const inputBar = renderSlot('conversation.composer.bar', {
     variant: hero ? 'hero' : 'composer',
     occurrence: props.variant,
+    hideModel: props.hideComposerModel,
     ...(inert
       ? {
         disabled: true,

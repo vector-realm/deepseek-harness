@@ -556,6 +556,7 @@ export interface ComposerBarOwnerProps {
   /** Open the Workspace picker from the inert composer surface. */
   onRequestWorkspace?: () => void
   placeholder?: string
+  hideModel?: boolean
   /** Optional content rendered above the composer surface. */
   accessory?: ReactNode
 }
@@ -685,6 +686,7 @@ export interface ConversationContentInputProps {
   hero: boolean
   /** Localized placeholder for the active composer, after workspace and blocker messages. */
   composerPlaceholder?: string
+  hideComposerModel?: boolean
 }
 
 /** Values passed from shared content to its occurrence-selected width controls. */
