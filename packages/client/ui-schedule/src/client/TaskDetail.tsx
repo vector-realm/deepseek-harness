@@ -57,6 +57,8 @@ export type TaskDetailTab = 'rule' | 'records'
 
 /** Deletion, Host edit and run, saved-history, and linked-Session actions one task's detail calls. */
 export interface TaskDetailInjected extends DeliveryHistoryInjected {
+  /** Whether the Host owns every mutation and manual dispatch of a saved task. */
+  readonly isManagedTask?: (task: ScheduleCatalogEntry) => boolean
   /** Host-owned edit, run, and new-Session interval actions. */
   readonly hostActions: HostTaskActions
   /**
@@ -111,6 +113,8 @@ type TaskDetailCommonProps = TaskDetailInjected
     readonly onDeleted: () => void
     /** Close this detail; a view with no list to return to omits the control. */
     readonly onClose?: () => void
+    /** Deployment-owned details rendered inside the rule view. */
+    readonly metadata?: ReactNode
   }
 
 /** New and existing tasks use the same editable page; only submission and saved-task actions differ. */
@@ -195,6 +199,7 @@ export function TaskDetail(props: TaskDetailProps): ReactNode {
 function TaskDetailView(props: TaskDetailProps): ReactNode {
   const { task, id, tab, onTabChange, onClose, onDelete, onConfirm, confirmId, onDeleted,
     onRetry, onOpenSession, loadHistory, status, deleting, useSessions, useWorkspaces, t, hostActions } = props
+  const managed = task !== undefined && props.isManagedTask?.(task) === true
   const sessions = useSessions(snapshot => snapshot)
   const workspaces = useWorkspaces(snapshot => snapshot)
   const key = task === undefined ? 'new' : `task:${task.id}`
@@ -325,7 +330,7 @@ function TaskDetailView(props: TaskDetailProps): ReactNode {
               onClick={() => { onTabChange(value) }}>{t(value === 'rule' ? 'detail.rule' : 'detail.records')}</button>)}
           </div>}
         <div className={css.detailActions}>
-          {task !== undefined && <><Tooltip label={t(task.status === 'active' ? 'host.pause' : 'host.resume')} side="bottom" delayMs={500} portal>
+          {task !== undefined && !managed && <><Tooltip label={t(task.status === 'active' ? 'host.pause' : 'host.resume')} side="bottom" delayMs={500} portal>
             {/* Native disabling while busy would flash the not-allowed cursor and dimmed icon for the length of the request. */}
             <span><Button size="sm" className={css.detailIconButton} disabled={dirty || executionActive || task.status === 'ended' || !props.authoritative}
               aria-disabled={busy || undefined} aria-label={t(task.status === 'active' ? 'host.pause' : 'host.resume')}
@@ -387,13 +392,14 @@ function TaskDetailView(props: TaskDetailProps): ReactNode {
               }}>{t('host.reapply')}</Button>}
           </div> : failure === 'host.executionPending' ? <p className={css.detailNotice} role="status">{t(failure)}</p>
             : failure !== null && <p className={css.saveFailure} role="alert">{t(failure)}</p>}
-          <TaskEditorFields draft={draft} onChange={setDraft}
+          {!managed && <TaskEditorFields draft={draft} onChange={setDraft}
             disabled={pending || executionActive || deletingTask} held={actionHold}
-            projects={projects} original={base} t={t} />
-          {draft.target === 'new'
+            projects={projects} original={base} t={t} />}
+          {!managed && draft.target === 'new'
             && <NewSessionLimit load={hostActions.loadNewSessionInterval} t={t} />}
-          {failure === null && issue !== undefined && issue !== 'incomplete'
+          {!managed && failure === null && issue !== undefined && issue !== 'incomplete'
             && <p className={css.saveFailure} role="status">{t(issue)}</p>}
+          {props.metadata}
         </>}
         {tab === 'records' && task !== undefined && <DeliveryHistory id={task.id} latestMessageId={task.lastDelivery?.messageId}
           timeZone={recordTimeZone(task)} loadHistory={loadHistory} onOpenSession={onOpenSession}
@@ -410,7 +416,7 @@ function TaskDetailView(props: TaskDetailProps): ReactNode {
             {linkedText}<IconChevronRightOutlineRegular />
           </Button>}
       </footer>}
-      {(tab === 'rule' || dirty) && <footer className={css.saveFooter}>
+      {!managed && (tab === 'rule' || dirty) && <footer className={css.saveFooter}>
         <span className={css.saveNotice}>{dirty ? t('rule.unsaved') : ''}</span>
         <Button disabled={nativeHold || task !== undefined && !dirty && failure === null} aria-disabled={actionHold || undefined}
           onClick={() => { if (actionHold) return; reset(); if (task === undefined) onClose?.() }}>{t('rule.cancel')}</Button>
@@ -419,7 +425,7 @@ function TaskDetailView(props: TaskDetailProps): ReactNode {
         onClick={() => { void save() }}>{t(saving ? task === undefined ? 'host.creating' : 'rule.saving' : task === undefined ? 'host.create' : 'rule.save')}</Button>
       </footer>}
     </aside>
-    {task !== undefined && <Modal open={confirmId === task.id}
+    {task !== undefined && !managed && <Modal open={confirmId === task.id}
       className={css.confirmDialog as string} contentClassName={css.confirmContent as string}
       title={t('delete.title')} description={t('delete.description')} closeLabel={t('delete.close')} onClose={() => { onConfirm(null) }}
       footer={<div className={css.confirmActions}>

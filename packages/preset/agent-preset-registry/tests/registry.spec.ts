@@ -113,6 +113,19 @@ describe('declarative preset revisions', () => {
     await expect(ctx.agentPresets.select(agent, 'standard')).rejects.toThrow('already started')
   })
 
+  it('refuses public preset switching to or from a reserved preset while Host selection still works', async () => {
+    const ctx = await harness({ reservedPresets: ['system-tasks'] })
+    contexts.push(ctx)
+    await declare(ctx, contribution('standard'))
+    await declare(ctx, contribution('system-tasks'))
+    const agent = await agentOn(ctx, 'ordinary-agent')
+    await expect(ctx.agentPresets.remoteSelect(agent, 'system-tasks')).rejects.toMatchObject({ code: 'agent-preset/reserved' })
+    expect(ctx.agentPresets.composedPreset(agent.ctx)).toBe('standard')
+    await expect(ctx.agentPresets.select(agent, 'system-tasks')).resolves.toBe('system-tasks')
+    await expect(ctx.agentPresets.remoteSelect(agent, 'standard')).rejects.toMatchObject({ code: 'agent-preset/reserved' })
+    expect((await ctx.agentPresets.remoteExportList()).presets.map(preset => preset.id)).toEqual(['standard'])
+  })
+
   it('inventories active and disabled child entries and declared display metadata', async () => {
     const ctx = await setup()
     await declare(ctx, { ...contribution('standard'), name: 'Standard', description: 'General', order: 2 })

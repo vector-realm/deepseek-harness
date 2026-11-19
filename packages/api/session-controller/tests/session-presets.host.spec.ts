@@ -37,6 +37,7 @@ interface StoredSession {
 interface HarnessOptions {
   /** Declared presets; the first is the default. Omitted, no roster is composed. */
   readonly presets?: readonly string[]
+  readonly reservedPresets?: readonly string[]
   /** Stored Sessions keyed by id. */
   readonly stored?: ReadonlyMap<SessionId, StoredSession>
   /** Stored Sessions whose writer another owner holds. */
@@ -90,6 +91,10 @@ async function harness(options: HarnessOptions = {}) {
     }
     ctx.provide('agentPresets', {
       defaultId: presets[0],
+      hasReservedPresets: (options.reservedPresets?.length ?? 0) > 0,
+      assertPublicPreset: (id: string) => {
+        if (options.reservedPresets?.includes(id)) throw new RemoteError('agent-preset/reserved', 'Reserved test preset', { agentPreset: id })
+      },
       presetForSession: (session: Session) => preset.stateOf(session),
       resolve: (id?: string) => Promise.resolve(id === undefined ? undefined : options.resolving?.get(id))
         .then(() => ({ id: known(id) })),
@@ -206,6 +211,19 @@ function completedTurn(seq: number): SessionEvent[] {
 }
 
 describe('session.create Agent preset identity', () => {
+  it('rejects a reserved preset over Remote while a trusted Host can create the scheduled Session', async () => {
+    const { ctx, remote } = await harness({ presets: ['standard', 'system-tasks'], reservedPresets: ['system-tasks'] })
+    const refused = await remote.create({ agentPreset: 'system-tasks' })
+    expect(refused).toMatchObject({ ok: false, error: { code: 'agent-preset/reserved' } })
+    const allowed = await remote.create({ agentPreset: 'standard' })
+    expect(allowed).toMatchObject({ ok: true, value: { agentPreset: 'standard' } })
+    const trusted = await ctx.sessionController.create({ agentPreset: 'system-tasks' })
+    expect(trusted.agentPreset).toBe('system-tasks')
+    expect(ctx.sessions.get(trusted.sessionId)?.header.agentPreset).toBe('system-tasks')
+    const reused = await remote.create({ sessionId: trusted.sessionId })
+    expect(reused).toMatchObject({ ok: false, error: { code: 'agent-preset/reserved' } })
+  })
+
   it('records the requested preset on the Session header', async () => {
     const { ctx, remote } = await harness({ presets: ['standard', 'minimal'] })
 

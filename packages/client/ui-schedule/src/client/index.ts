@@ -56,7 +56,8 @@ import { SessionScheduleHover } from './SessionScheduleHover.tsx'
 import { SessionScheduleMark } from './SessionScheduleMark.tsx'
 import { TaskTabBindings } from './task-tab-bindings.ts'
 import { createEditorStore } from './editor-store.ts'
-import { TaskManagerPage, type TaskManagerInjected } from './TaskManagerPage.tsx'
+import { TaskManagerPage, taskManagerSlots, type TaskManagerInjected } from './TaskManagerPage.tsx'
+export type { TaskMetadata } from './TaskManagerPage.tsx'
 import type { TaskDetailInjected } from './TaskDetail.tsx'
 import { TaskManagerIcon } from './TaskManagerIcon.tsx'
 import { sessionLinkState } from './session-link.ts'
@@ -123,8 +124,16 @@ export function apply(ctx: ClientContext): void {
   // renders the card beneath the closing prose.
   ctx.uiConversation.events.register(scheduleTurnDefinition)
   ctx.remoteAccess.whenAccess('schedule/catalog', function* () {
+    let policy: { readonly reservedPresets?: readonly string[]; readonly fixedUserTarget?: true } | undefined
     const manager = createCatalogSource<ScheduleCatalogEntry>({
-      list: () => ctx.remote.schedule.catalog(),
+      list: async () => {
+        const [catalog, limits] = await Promise.all([
+          ctx.remote.schedule.catalog(),
+          policy === undefined ? settle(() => ctx.remote.schedule.deliveryLimits()) : undefined,
+        ])
+        if (limits?.ok === true) policy = limits.value
+        return catalog
+      },
       remove: async (id): Promise<RemoteResult<ScheduleDeleteResult>> => {
         const result = await ctx.remote.schedule.edit({ id, action: 'delete' })
         if (!result.ok) return result
@@ -173,6 +182,8 @@ export function apply(ctx: ClientContext): void {
       onRetry: manager.onRetry,
       loadHistory: request => ctx.remote.schedule.history(request),
       onOpenSession: openSession,
+      isManagedTask: ({ target }) => target.kind !== 'session'
+        && target.create.agentPreset !== undefined && policy?.reservedPresets?.includes(target.create.agentPreset) === true,
       hostActions: {
         edit: async (request) => {
           const result = await settle(() => ctx.remote.schedule.edit(request))
@@ -219,9 +230,11 @@ export function apply(ctx: ClientContext): void {
       name: 'main',
       key: PANEL_ID,
       locale: MANAGER_NS,
+      children: taskManagerSlots,
       store: createEditorStore(),
       inject: (): TaskManagerInjected => ({
         ...detail,
+        manualCreateOnly: () => policy?.fixedUserTarget === true,
         onNewTask: () => { ctx.uiWorkspace.startSession(undefined, { prompt: t('host.createPrompt'), whenDraftExists: 'append' }) },
         onClearEnded: async () => {
           const outcome = await clearEnded()

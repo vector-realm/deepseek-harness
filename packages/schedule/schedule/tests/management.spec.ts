@@ -47,6 +47,43 @@ it.each([undefined, 90, 7200])('reports the effective new-Session delivery inter
   expect(test.stat).not.toHaveBeenCalled()
 })
 
+it('protects managed tasks from public writes and keeps user deliveries in a dedicated preset', async () => {
+  const test = await harness({ config: {
+    reservedPresets: ['system-tasks'],
+    userTaskTarget: { cwd: '/dedicated', agentPreset: 'user-tasks' },
+  } })
+  active.push(test)
+  const { service, createSession } = test
+  const actor = brandString<SessionId>('ordinary-session')
+  const request = { title: 'Reminder', prompt: 'Inspect', timing: { kind: 'rrule', rrule: daily } } as const
+  const systemTarget = { kind: 'new', create: { agentPreset: 'system-tasks' } } as const
+  const system = await service.create({ ...request, target: systemTarget })
+  for (const patch of [{ active: false }, { prompt: 'overwrite' }, { target: { kind: 'new' } as const }]) {
+    await expect(service.remoteEdit({ id: system.id, action: 'update', patch })).rejects.toMatchObject({ code: 'schedule/input-invalid' })
+  }
+  await expect(service.remoteEdit({ id: system.id, action: 'delete' })).rejects.toMatchObject({ code: 'schedule/input-invalid' })
+  await expect(service.edit({ id: system.id, action: 'delete' }, actor)).rejects.toMatchObject({ code: 'invalid_rule' })
+  await expect(service.run({ id: system.id })).rejects.toMatchObject({ code: 'schedule/input-invalid' })
+  expect(createSession).not.toHaveBeenCalled()
+  await expect(service.remoteCreate({ ...request, target: systemTarget })).rejects.toMatchObject({ code: 'schedule/input-invalid' })
+  await expect(service.create({ ...request, target: systemTarget }, actor)).rejects.toMatchObject({ code: 'invalid_rule' })
+  await expect(service.remoteCreate({ ...request, target: { kind: 'session', sessionId: actor } })).rejects.toMatchObject({ code: 'schedule/input-invalid' })
+
+  const user = await service.remoteCreate({
+    ...request, target: { kind: 'new_once', create: { cwd: '/arbitrary', agentPreset: 'unknown' } },
+  })
+  expect(user.target).toEqual({ kind: 'new', create: { cwd: '/dedicated', agentPreset: 'user-tasks' } })
+  await expect(service.remoteEdit({ id: user.id, action: 'update', patch: { target: systemTarget } })).rejects.toMatchObject({ code: 'schedule/input-invalid' })
+  const destination = agentFor(test.ctx, 'created-session')
+  test.resolve.mockResolvedValue({ agent: destination })
+  await expect(service.run({ id: user.id })).resolves.toMatchObject({ id: user.id })
+  expect(createSession).toHaveBeenLastCalledWith(expect.objectContaining({ cwd: '/dedicated', agentPreset: 'user-tasks' }))
+  await expect(service.remoteEdit({ id: user.id, action: 'update', patch: { active: false } })).resolves.toMatchObject({ status: 'paused' })
+  await expect(service.edit({ id: system.id, action: 'update', patch: { title: 'Synced by the Host' } })).resolves.toMatchObject({ title: 'Synced by the Host' })
+  await vi.advanceTimersByTimeAsync(3_600_000)
+  expect(createSession).toHaveBeenLastCalledWith(expect.objectContaining({ agentPreset: 'system-tasks' }))
+})
+
 it('manages Host tasks globally with Host-generated ids', async () => {
   const { service } = await setup()
   const created = await service.create({

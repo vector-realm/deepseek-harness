@@ -12,7 +12,7 @@ import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-tools'
 import type { AgentPresetDocument, AgentPresetRoster } from './types.ts'
 import { entryListProblem, type PresetDefinition } from './definition.ts'
-import type { AgentPreset, Config } from './preset.ts'
+import type { AgentPreset, Config as BaseConfig } from './preset.ts'
 import { agentPresetProjectionDefinition } from './session.ts'
 import { auditRows, leakedServices, mountPreset, serviceForMount, type PresetMount } from './mount.ts'
 import { activeCompositionModules, definitionComposition, mountedCompositionRows, type AgentPresetComposition, type AgentPresetInspection } from './composition-inventory.ts'
@@ -21,11 +21,23 @@ export { agentPresetProjectionDefinition } from './session.ts'
 export { entryListProblem, type PresetDefinition } from './definition.ts'
 export { auditRows, leakedServices, type PresetMount, type RowAudit } from './mount.ts'
 export type { AgentPresetInspection } from './composition-inventory.ts'
-export type { AgentPreset, Config } from './preset.ts'
+export type { AgentPreset } from './preset.ts'
+
+/** Preset configuration, including Host-only capabilities. */
+export interface Config extends BaseConfig {
+  /** Presets that are never offered for public Session creation or switching. */
+  reservedPresets?: string[]
+}
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
     agentPresets: AgentPresetRegistry
+  }
+}
+
+declare module '@deepseek-ai/dsh-typert-protocol' {
+  interface RemoteErrorDetailsMap {
+    'agent-preset/reserved': { readonly agentPreset: string }
   }
 }
 
@@ -55,6 +67,7 @@ export class AgentPresetRegistry extends TypertRemoteService {
   static Config = z.object({
     default: z.string().required(),
     selectedDefault: z.string().volatile(),
+    reservedPresets: z.array(z.string().min(1)).default([]),
   })
   private agentPresetProjectionHandle!: ProjectionHandle<string | null>
   private readonly owner: Context
@@ -79,6 +92,15 @@ export class AgentPresetRegistry extends TypertRemoteService {
 
   /** Default preset for a subsequently created session. */
   get defaultId(): string { return this.config.selectedDefault.get() ?? this.config.default }
+
+  /** Whether public Session operations have a reserved-preset policy to apply. */
+  get hasReservedPresets(): boolean { return (this.config.reservedPresets?.length ?? 0) > 0 }
+
+  /** Refuse a public operation that would select a Host-only preset. */
+  assertPublicPreset(id: string): void {
+    if (this.config.reservedPresets?.includes(id) !== true) return
+    throw new RemoteError('agent-preset/reserved', 'This Agent preset is reserved by the Host.', { agentPreset: id })
+  }
 
   /**
    * Read the preset recorded for a Session, including selections no longer in the roster.
@@ -209,7 +231,8 @@ export class AgentPresetRegistry extends TypertRemoteService {
   @Remote('list')
   async remoteExportList(): Promise<AgentPresetRoster> {
     const defaultId = this.defaultId
-    return { presets: (await this.list()).map(row => ({ ...row, isDefault: row.id === defaultId })) }
+    return { presets: (await this.list()).filter(row => this.config.reservedPresets?.includes(row.id) !== true)
+      .map(row => ({ ...row, isDefault: row.id === defaultId })) }
   }
 
   /** Resolve an identity without starting an Agent.
@@ -360,7 +383,6 @@ export class AgentPresetRegistry extends TypertRemoteService {
    * @param agentPreset Requested identity.
    * @returns Committed preset identity.
    */
-  @Remote('select')
   async select(agent: Agent, agentPreset: string): Promise<string> {
     const turn = (this.switches.get(agent.id) ?? Promise.resolve()).then(async () => {
       const boundary = this.owner.agents.turnBoundaryOf(agent.session)
@@ -379,6 +401,15 @@ export class AgentPresetRegistry extends TypertRemoteService {
     try { return await turn } finally {
       if (this.switches.get(agent.id) === guard) this.switches.delete(agent.id)
     }
+  }
+
+  /** Select a public preset on an ordinary blank Session. */
+  @Remote('select')
+  async remoteSelect(agent: Agent, agentPreset: string): Promise<string> {
+    this.assertPublicPreset(agentPreset)
+    const existing = this.presetForSession(agent.session)
+    if (existing !== null) this.assertPublicPreset(existing)
+    return this.select(agent, agentPreset)
   }
 
   /** Read current registrations for cold transcript presentation.

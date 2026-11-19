@@ -131,6 +131,28 @@ afterEach(() => {
   }
 })
 
+it('renders deployment actions on the native page and presents a managed rule without mutation controls', () => {
+  const managed = { ...fresh, target: { kind: 'new', create: { agentPreset: 'system-tasks' } } } as const
+  const renderSlot: NonNullable<TaskManagerPageProps['renderSlot']> = name =>
+    name === 'schedule.manager.header' ? <button type="button">Run history</button> : <span>Deployment metadata</span>
+  const { props } = mount({ records: [managed] }, en, {
+    manualCreateOnly: () => true,
+    isManagedTask: task => task.id === managed.id,
+    renderSlot,
+  })
+  expect(screen.getByRole('button', { name: 'Run history' })).toBeTruthy()
+  expect(screen.getByText('Deployment metadata')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: managed.title }))
+  expect(screen.getAllByText('Deployment metadata')).toHaveLength(2)
+  expect(screen.queryByRole('button', { name: en['host.pause'] })).toBeNull()
+  expect(screen.queryByRole('button', { name: en['detail.more'] })).toBeNull()
+  expect(screen.queryByRole('button', { name: en['rule.save'] })).toBeNull()
+  expect(screen.queryByDisplayValue(managed.prompt)).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: en['new.action'] }))
+  expect(screen.getByRole('heading', { name: en['host.manualCreate'] })).toBeTruthy()
+  expect(props.onNewTask).not.toHaveBeenCalled()
+})
+
 /** Device zone the cases pin. */
 const DEVICE_ZONE = 'Asia/Shanghai'
 /** Reference instant for static schedule assertions; timers retain their real scheduling. */

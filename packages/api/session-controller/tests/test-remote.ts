@@ -374,7 +374,7 @@ export async function createSessionTestRemote(
       () => direct.search(request, signal),
       signal,
     ),
-    create: request => remoteResult(() => direct.create(request)),
+    create: request => remoteResult(() => direct.remoteCreate(request)),
     selectModel: request => remoteResult(() => direct.selectModel(request)),
     modelCatalog: () => remoteResult(() => direct.modelCatalog()),
     rename: request => remoteResult(() => direct.rename(request)),

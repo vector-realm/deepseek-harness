@@ -94,6 +94,10 @@ export interface Config {
    * creates a Session at every delivery; omission defaults to 60. Timed and manual deliveries both wait for it.
    */
   newSessionIntervalSeconds?: number
+  /** Presets reserved for Host-owned tasks. Public task actions cannot target or mutate them. */
+  reservedPresets?: string[]
+  /** Optional fixed new-Session destination for every publicly created task. */
+  userTaskTarget?: false | { cwd: string; agentPreset: string }
 }
 
 /** Retained delivery-history window applied when the deployment states none. */
@@ -229,10 +233,16 @@ export class ScheduleService extends TypertRemoteService {
     deliveryHistoryRecords: z.number().step(1).min(1).max(10_000).default(DEFAULT_DELIVERY_HISTORY_RECORDS),
     newSessionIntervalSeconds: z.number().step(1).min(MIN_EVERY_INTERVAL_SECONDS).max(604_800)
       .default(DEFAULT_NEW_SESSION_INTERVAL_SECONDS),
+    reservedPresets: z.array(z.string().min(1)).default([]),
+    userTaskTarget: z.union([
+      z.const(false), z.object({ cwd: z.string().min(1).required(), agentPreset: z.string().min(1).required() }),
+    ]).default(false),
   })
 
   /** Resolved retention and admission limits shared with the runtime that appends acknowledgments. */
   private readonly limits: ScheduleRuntimeLimits
+  private readonly reservedPresets: ReadonlySet<string>
+  private readonly userTaskTarget: Exclude<Config['userTaskTarget'], false>
   private readonly ready: Promise<Domain<typeof scheduleDomain>>
   private readonly initialized: PromiseLike<unknown>
   private chain: Promise<unknown> = Promise.resolve()
@@ -247,6 +257,11 @@ export class ScheduleService extends TypertRemoteService {
    */
   constructor(ctx: Context, config: Config) {
     super(ctx, 'schedule')
+    this.reservedPresets = new Set(config.reservedPresets)
+    this.userTaskTarget = config.userTaskTarget || undefined
+    if (this.isReservedPreset(this.userTaskTarget?.agentPreset)) {
+      throw new Error('schedule: a public task destination cannot use a reserved preset.')
+    }
     ctx.inject(['sessionController'], (webCtx) => {
       webCtx.effect(() => {
         this.resolveWebAgent = async (sessionId) => {
@@ -350,8 +365,16 @@ export class ScheduleService extends TypertRemoteService {
    * @returns The configured minimum spacing between deliveries that each create a Session, in seconds.
    */
   @Remote('deliveryLimits')
-  deliveryLimits(): { readonly newSessionIntervalSeconds: number } {
-    return { newSessionIntervalSeconds: this.limits.newSessionIntervalMs / 1_000 }
+  deliveryLimits(): {
+    readonly newSessionIntervalSeconds: number
+    readonly reservedPresets?: readonly string[]
+    readonly fixedUserTarget?: true
+  } {
+    return {
+      newSessionIntervalSeconds: this.limits.newSessionIntervalMs / 1_000,
+      ...(this.reservedPresets.size > 0 ? { reservedPresets: [...this.reservedPresets] } : {}),
+      ...(this.userTaskTarget === undefined ? {} : { fixedUserTarget: true as const }),
+    }
   }
 
   /**
@@ -363,7 +386,7 @@ export class ScheduleService extends TypertRemoteService {
   @Remote('create')
   async remoteCreate(request: ScheduleCreateRequest, signal?: AbortSignal): Promise<ScheduleCatalogEntry> {
     try {
-      return await this.create(request, undefined, signal)
+      return await this.create(request, undefined, signal, true)
     } catch (error: unknown) {
       throwRemoteScheduleInput(error)
     }
@@ -377,21 +400,25 @@ export class ScheduleService extends TypertRemoteService {
    * @param request - Title, prompt, recurrence, and delivery destination.
    * @param actorSessionId - Session of the acting Agent, or undefined for a human caller.
    * @param signal - Cancellation checked before the durable write begins, including after FIFO waits.
+   * @param publicWrite - Apply the public target policy. Agent and Remote calls always apply it.
    * @returns The stored task. Cancellation does not roll back an in-flight write.
    */
   async create(
     request: ScheduleCreateRequest,
     actorSessionId?: SessionId,
     signal?: AbortSignal,
+    publicWrite: boolean = false,
   ): Promise<ScheduleCatalogEntry> {
     const id = brandString<ScheduleId>(`schedule-${randomUUID()}`)
     const now = Date.now()
     const record = createScheduleRecord(id, request.title, request.prompt, request.timing, now)
-    const target = await this.resolveTarget(request.target ?? { kind: 'new_once' }, signal)
+    const external = publicWrite || actorSessionId !== undefined
+    const requested = request.target ?? { kind: 'new_once' }
+    const target = await this.resolveTarget(external ? this.publicTarget(requested) : requested, signal)
     return this.serialize(async () => {
       const domain = await this.getDomain()
       signal?.throwIfAborted()
-      await this.validateTarget(target, signal)
+      await this.validateTarget(target, signal, external)
       signal?.throwIfAborted()
       const createdAt = new Date(now).toISOString()
       const task = scheduleTaskSchema.parse({
@@ -494,7 +521,11 @@ export class ScheduleService extends TypertRemoteService {
    */
   @Remote('run')
   async run(request: ScheduleRunRequest, signal?: AbortSignal): Promise<ScheduleRunResult> {
-    await this.getDomain()
+    const domain = await this.getDomain()
+    const task = domain.table('tasks').get(request.id)
+    if (task !== undefined && this.isReservedTarget(task.target)) {
+      throwRemoteScheduleInput(new ScheduleInputError('invalid_rule', 'This task is managed by the Host.'))
+    }
     /* v8 ignore next -- initialization installs the runtime before the domain becomes readable. */
     if (this.runtime === undefined) throw new Error('Schedule runtime is unavailable')
     const result = await this.runtime.runNow(request.id, signal)
@@ -522,7 +553,7 @@ export class ScheduleService extends TypertRemoteService {
     return this.serialize<ScheduleDeleteInactiveResult>(async () => {
       const tasks = (await this.getDomain()).table('tasks')
       const ended = [...tasks.entries()]
-        .filter(([, task]) => task.status === 'ended')
+        .filter(([, task]) => task.status === 'ended' && !this.isReservedTarget(task.target))
         .map(([id]) => id)
       return { deleted: await this.removeRows(ended, 'schedule ended-task removal failed', false) }
     })
@@ -537,7 +568,7 @@ export class ScheduleService extends TypertRemoteService {
   @Remote('edit')
   async remoteEdit(request: ScheduleEditRequest, signal?: AbortSignal): Promise<ScheduleEditResult> {
     try {
-      return await this.edit(request, undefined, signal)
+      return await this.edit(request, undefined, signal, true)
     } catch (error: unknown) {
       throwRemoteScheduleInput(error)
     }
@@ -551,24 +582,28 @@ export class ScheduleService extends TypertRemoteService {
    * @param request - Task identity and one update or delete operation.
    * @param actorSessionId - Session of the acting Agent, or undefined for a human caller.
    * @param signal - Cancellation checked before the durable write begins, including after FIFO waits.
+   * @param publicWrite - Apply the public edit policy. Agent and Remote calls always apply it.
    * @returns The updated task, the deletion outcome, or a non-mutating miss or conflict.
    */
   async edit(
     request: ScheduleEditRequest,
     actorSessionId?: SessionId,
     signal?: AbortSignal,
+    publicWrite: boolean = false,
   ): Promise<ScheduleEditResult> {
     if (request.action === 'update' && Object.keys(request.patch).length === 0) {
       throw new ScheduleInputError('invalid_rule', 'An update patch requires at least one field.')
     }
+    const external = publicWrite || actorSessionId !== undefined
     const target = request.action === 'update' && request.patch.target !== undefined
-      ? await this.resolveTarget(request.patch.target, signal)
+      ? await this.resolveTarget(external ? this.publicTarget(request.patch.target) : request.patch.target, signal)
       : undefined
     return this.serialize<ScheduleEditResult>(async () => {
       const tasks = (await this.getDomain()).table('tasks')
       signal?.throwIfAborted()
       const current = tasks.get(request.id)
       if (current === undefined) return { id: request.id, code: 'schedule_not_found' }
+      if (external && this.isReservedTarget(current.target)) throw new ScheduleInputError('invalid_rule', 'This task is managed by the Host.')
       if (request.expectedUpdatedAt !== undefined && request.expectedUpdatedAt !== (current.updatedAt ?? null)) {
         return { id: request.id, code: 'schedule_conflict' }
       }
@@ -581,7 +616,7 @@ export class ScheduleService extends TypertRemoteService {
       }
       const effectiveTarget = target ?? current.target
       if (target !== undefined || request.patch.timing !== undefined || request.patch.active === true) {
-        await this.validateTarget(effectiveTarget, signal)
+        await this.validateTarget(effectiveTarget, signal, external)
         signal?.throwIfAborted()
       }
       const task = revisedTask(current, request.patch, target, actorSessionId, Date.now())
@@ -615,6 +650,22 @@ export class ScheduleService extends TypertRemoteService {
     return this.ready
   }
 
+  private isReservedPreset(preset: string | undefined): boolean {
+    return preset !== undefined && this.reservedPresets.has(preset)
+  }
+
+  private isReservedTarget(target: ScheduleTargetRequest): boolean {
+    return target.kind !== 'session' && this.isReservedPreset(target.create?.agentPreset)
+  }
+
+  private publicTarget(target: ScheduleTargetRequest): ScheduleTargetRequest {
+    if (this.isReservedTarget(target)) throw new ScheduleInputError('invalid_rule', 'This target preset is reserved by the Host.')
+    if (this.userTaskTarget === undefined) return target
+    if (target.kind === 'session') throw new ScheduleInputError('invalid_rule', 'This Host requires a new Session for public tasks.')
+    // A fresh Session cannot be claimed by a caller between task creation and delivery.
+    return { kind: 'new', create: this.userTaskTarget }
+  }
+
   /**
    * Resolve a requested destination without activating a Session.
    *
@@ -646,7 +697,7 @@ export class ScheduleService extends TypertRemoteService {
   }
 
   /** Check arming prerequisites without activating a Session; repeated inside the mutation FIFO. */
-  private async validateTarget(target: ScheduleTarget, signal?: AbortSignal): Promise<void> {
+  private async validateTarget(target: ScheduleTarget, signal?: AbortSignal, publicWrite = false): Promise<void> {
     if (target.kind === 'new') {
       this.requireSessionCreation()
       return
@@ -657,6 +708,9 @@ export class ScheduleService extends TypertRemoteService {
     const agent = this.ctx.agents.get(target.sessionId)
     if (agent !== undefined) {
       if (delegationDepthOf(agent) > 0) throw new ScheduleInputError('subagent_session', SUBAGENT_SESSION_REFUSAL)
+      if (publicWrite && this.isReservedPreset(agent.session.header.agentPreset)) {
+        throw new ScheduleInputError('invalid_rule', 'This target preset is reserved by the Host.')
+      }
       return
     }
     const stored = await this.ctx.sessionPersistence.stat(target.sessionId, signal === undefined ? undefined : { signal })
@@ -670,6 +724,8 @@ export class ScheduleService extends TypertRemoteService {
       else throw new ScheduleInputError('invalid_rule', `target Session "${target.sessionId}" does not exist.`)
     } else if ((stored.header.delegationDepth ?? 0) > 0) {
       throw new ScheduleInputError('subagent_session', SUBAGENT_SESSION_REFUSAL)
+    } else if (publicWrite && this.isReservedPreset(stored.header.agentPreset)) {
+      throw new ScheduleInputError('invalid_rule', 'This target preset is reserved by the Host.')
     }
   }
 

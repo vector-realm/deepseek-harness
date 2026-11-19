@@ -12,7 +12,7 @@ import type {} from '@deepseek-ai/dsh-client-file-upload'
 import { canOpenNativePath, nativeFileManager, nativeFileApplications, openNativeFileApplication, openNativeAssociatedPath, revealNativePath } from '@deepseek-ai/dsh-native-command'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-projection-cache'
-import type { SessionObservation } from '@deepseek-ai/dsh-session-query'
+import { SessionQueryError, type SessionObservation } from '@deepseek-ai/dsh-session-query'
 import { Remote, RemoteError, TypertRemoteService, principalOf, type TypertResourceResolveInput } from '@deepseek-ai/dsh-typert-protocol'
 import { canonicalClientTimeZone } from '@deepseek-ai/dsh-util-time'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
@@ -304,9 +304,39 @@ export class SessionController extends TypertRemoteService {
    * @param request - optional blank Session to reuse, location, and Agent preset.
    * @returns the created or reused Session identity and its preset when configured.
    */
-  @Remote('create')
   create(request: SessionCreateRequest): Promise<SessionCreateValue> {
     return this.commands.create(request)
+  }
+
+  /** Create or reuse an ordinary public Session. Host deliveries use create() directly. */
+  @Remote('create')
+  async remoteCreate(request: SessionCreateRequest): Promise<SessionCreateValue> {
+    const presets = this.ctx.get('agentPresets')
+    if (presets?.hasReservedPresets === true) {
+      const agentPreset = request.agentPreset ?? presets.defaultId
+      presets.assertPublicPreset(agentPreset)
+      if (request.sessionId !== undefined) await this.assertOrdinarySession(request.sessionId)
+      return this.create({ ...request, agentPreset })
+    }
+    return this.create(request)
+  }
+
+  private async assertOrdinarySession(id: SessionId): Promise<void> {
+    const presets = this.ctx.get('agentPresets')
+    if (presets?.hasReservedPresets !== true) return
+    const session = this.ctx.sessions.get(id)
+    if (session !== undefined) {
+      const preset = presets.presetForSession(session) ?? session.header.agentPreset
+      if (preset !== undefined) presets.assertPublicPreset(preset)
+      return
+    }
+    using stored = await this.ctx.sessionQuery.observeSession(id).catch((error: unknown) => {
+      if (error instanceof SessionQueryError && error.code === 'SESSION_QUERY_SESSION_NOT_FOUND') return undefined
+      throw error
+    })
+    const selection = stored?.events.findLast(event => event.type === 'agent-preset/selected')
+    const preset = selection?.data.agentPreset ?? stored?.header.agentPreset
+    if (preset !== undefined) presets.assertPublicPreset(preset)
   }
 
   /**
@@ -449,6 +479,7 @@ export class SessionController extends TypertRemoteService {
    */
   @Remote('fork')
   async fork(request: SessionForkRequest): Promise<SessionForkValue> {
+    await this.assertOrdinarySession(request.sessionId)
     if (request.allowMigration === false && this.ctx.sessions.get(request.sessionId) === undefined) {
       const stored = await this.ctx.get('sessionPersistence')?.stat(request.sessionId)
       if (stored?.formatStatus === 'migration-required' && this.ctx.sessions.get(request.sessionId) === undefined) {
@@ -468,6 +499,8 @@ export class SessionController extends TypertRemoteService {
    */
   @Remote('prompt')
   async prompt(request: SessionPromptRequest, signal: AbortSignal): Promise<SessionPromptValue> {
+    signal.throwIfAborted()
+    await this.assertOrdinarySession(request.sessionId)
     signal.throwIfAborted()
     if (request.content.length > 0 && !hasPromptContent(request.content)) {
       throw new RemoteError('gateway/bad-request', 'prompt content must include non-whitespace text or an attachment', {})
