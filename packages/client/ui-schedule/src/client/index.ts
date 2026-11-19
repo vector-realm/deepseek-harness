@@ -29,9 +29,11 @@
  */
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import { createElement } from 'react'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
@@ -76,6 +78,24 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /**
+     * Contribute deployment wording for one key in the native task manager.
+     * @param locale - active locale id.
+     * @param key - task manager dictionary key.
+     * @param params - original translation arguments.
+     * @mode bail
+     */
+    'schedule/manager-copy'(locale: string, key: string, params?: Record<string, unknown>): string | undefined
+  }
+}
+
+function managerCopy(ctx: ClientContext, fallback: PropsLocale<'schedule.manager'>['t']): PropsLocale<'schedule.manager'>['t'] {
+  return (key, params) => ctx.bail('schedule/manager-copy', ctx.locale.getLocale().active, key, params)
+    ?? fallback(key, params)
+}
+
 /** Required services for catalogs, ambient Session marks, the right Sidebar, Remote queries, linked-Session navigation, and access. */
 export const inject = [
   'slots', 'locale', 'remote', 'remote.schedule', 'conversation', 'uiConversation', 'uiWorkspace', 'sessions',
@@ -117,7 +137,7 @@ export function apply(ctx: ClientContext): void {
     pt: managerPt,
   }
   ctx.effect(() => ctx.locale.register(MANAGER_NS, managerDictionaries), 'ui-schedule: manager dictionaries')
-  const t = ctx.locale.bind(MANAGER_NS)
+  const t = managerCopy(ctx, ctx.locale.bind(MANAGER_NS))
   ctx.effect(() => ctx.sidebarRightTabs.register(scheduleTaskDefinition(t)), 'ui-schedule: task tab type')
   // The created task is a Turn-level element, not a Tool-group row: the Turn
   // Definition publishes the settled result and the tail list entry below
@@ -220,7 +240,7 @@ export function apply(ctx: ClientContext): void {
       locale: MANAGER_NS,
       store: createEditorStore(),
       inject: (): ScheduleTaskTabInjected => ({ ...detail, taskBindings }),
-    }, ScheduleTaskTab))
+    }, props => createElement(ScheduleTaskTab, { ...props, t: managerCopy(ctx, props.t) })))
     yield ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register({
       name: 'sidebar.right.pane.tab.title',
       key: SCHEDULE_TASK_ID,
@@ -249,7 +269,7 @@ export function apply(ctx: ClientContext): void {
           return { created: result.value }
         },
       }),
-    }, TaskManagerPage))
+    }, props => createElement(TaskManagerPage, { ...props, t: managerCopy(ctx, props.t) })))
     yield ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
       name: 'sidebar.panellist',
       id: PANEL_ID,

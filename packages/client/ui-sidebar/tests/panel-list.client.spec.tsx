@@ -514,15 +514,30 @@ describe('sidebar entry click analytics', () => {
 
 it('applies downstream schedule copy and separates business and settings entries', async () => {
   vi.stubEnv('DSH_CLIENT_MENU_SCHEDULES', '定时任务')
-  vi.stubEnv('DSH_CLIENT_MENU_SEPARATOR_BEFORE', 'platform-accounts')
+  vi.stubEnv('DSH_CLIENT_MENU_SEPARATOR_BEFORE', 'canyin-platform-accounts')
   try {
     const { runtime, view } = await bench()
+    await runtime.mount({
+      inject: ['slots'],
+      apply(ctx: Context) {
+        ctx.slots.inject('sidebar.session.action', () => ctx.slots.register({
+          name: 'sidebar.session.action', id: 'ask-test', priority: -100,
+        }, () => <button type="button" aria-label="问问助手">问问助手</button>))
+      },
+    })
     await mountPanel(runtime, { id: 'schedules' as MainPanelId, heading: 'Schedule', label: '自动化任务', order: 10 })
-    await mountPanel(runtime, { id: 'report' as MainPanelId, heading: 'Report', label: '经营日报', order: -40 })
-    await mountPanel(runtime, { id: 'platform-accounts' as MainPanelId, heading: 'Accounts', label: '平台账号', order: 100 })
+    for (const [id, label, order] of [
+      ['settings-panel', '系统设置', 110], ['canyin-platform-accounts', '平台账号', 100],
+      ['direct-messages', '抖音私信', -20], ['reviews', '顾客口碑', -30], ['report', '经营日报', -40],
+    ] as const) {
+      await mountPanel(runtime, { id: id as MainPanelId, heading: label, label, order })
+    }
     const nav = await view.findByRole('navigation')
-    expect(within(nav).getAllByRole('button').map(button => button.getAttribute('aria-label')))
-      .toEqual(['经营日报', '平台账号', '定时任务'])
+    expect(view.getByRole('button', { name: '问问助手' }).compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .toBeTruthy()
+    expect([...nav.querySelectorAll('button,[role="separator"]')].map(element =>
+      element.getAttribute('role') === 'separator' ? 'separator' : element.getAttribute('aria-label')))
+      .toEqual(['经营日报', '顾客口碑', '抖音私信', 'separator', '平台账号', '定时任务', '系统设置'])
     const separator = within(nav).getByRole('separator')
     expect(separator.nextElementSibling?.querySelector('button')?.getAttribute('aria-label')).toBe('平台账号')
   } finally {

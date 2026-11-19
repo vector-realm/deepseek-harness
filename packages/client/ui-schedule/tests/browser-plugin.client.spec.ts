@@ -1,5 +1,6 @@
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { Context, Service } from '@deepseek-ai/cordis'
+import type { ReactElement } from 'react'
 import { describe, expect, it, vi, type Mock } from 'vitest'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { UiConversation } from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -376,6 +377,7 @@ describe('ui-schedule browser half', () => {
         'sidebar.right.pane.tab.title': { kind: 'keyed', scope: 'session' },
       },
     } as never, Empty)
+    ctx.on('schedule/manager-copy', (_locale, key) => key === 'detail.name' ? '品牌名称' : undefined, { global: true })
     const fiber = ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
     try {
@@ -383,7 +385,12 @@ describe('ui-schedule browser half', () => {
         expect.objectContaining({ id: SCHEDULE_TASK_ID, kind: SCHEDULE_TASK_KIND, priority: 'builtin' }),
       )
       const body = ctx.slots.entries('sidebar.right.pane.tab')[0]!
-      expect(body.component).toBe(ScheduleTaskTab)
+      const element = (body.component as (props: object) => ReactElement<{ t: (key: string) => string }>)({
+        t: (key: string) => `default: ${key}`,
+      })
+      expect(element.type).toBe(ScheduleTaskTab)
+      expect(element.props.t('detail.name')).toBe('品牌名称')
+      expect(element.props.t('detail.instruction')).toBe('default: detail.instruction')
       expect(body.options).toMatchObject({ key: SCHEDULE_TASK_ID })
       const title = ctx.slots.entries('sidebar.right.pane.tab.title')[0]!
       expect(title.component).toBe(ScheduleTaskTabTitle)
